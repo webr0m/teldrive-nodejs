@@ -1,0 +1,36 @@
+import { number, fail, now } from './core.mjs';
+
+// Infrastructure-independent limits, persisted separately from credentials.
+export const limitDefinitions = {
+  partSize: { label: 'Tamaño de parte (bytes)', min: 1048576, max: 536870912, env: 'PART_SIZE' },
+  maxFileSize: { label: 'Tamaño máximo de archivo (bytes)', min: 0, max: Number.MAX_SAFE_INTEGER, env: 'MAX_FILE_SIZE' },
+  concurrency: { label: 'Transferencias simultáneas', min: 1, max: 64, env: 'MAX_CONCURRENT_TRANSFERS' },
+  uploadTtlHours: { label: 'Duración de carga reanudable (horas)', min: 1, max: 8760, env: 'UPLOAD_TTL_HOURS' },
+  rateLimitPerMinute: { label: 'Solicitudes por IP por minuto', min: 10, max: 100000, env: 'RATE_LIMIT_PER_MINUTE' },
+  loginRatePerMinute: { label: 'Solicitudes de acceso por IP por minuto', min: 1, max: 1000, env: 'LOGIN_RATE_PER_MINUTE' },
+  jsonMaxBytes: { label: 'Tamaño máximo de JSON (bytes)', min: 4096, max: 16777216, env: 'JSON_MAX_BYTES' },
+};
+export class Settings {
+  constructor(store, config, uploads) {
+    this.store = store; this.config = config; this.uploads = uploads;
+    this.defaults = Object.fromEntries(Object.keys(limitDefinitions).map(k => [k, config[k]]));
+    const saved = store.get('settings', 'limits');
+    if (saved) this.apply(saved.values);
+  }
+  read() { return { values: Object.fromEntries(Object.keys(limitDefinitions).map(k => [k, this.config[k]])), definitions: limitDefinitions, defaults: this.defaults }; }
+  apply(values) {
+    for (const [key, value] of Object.entries(values)) {
+      const definition = limitDefinitions[key]; if (!definition) fail(422, 'unknown_setting');
+      number(value, definition.min, definition.max);
+    }
+    Object.assign(this.config, values); this.uploads.transfers.max = this.config.concurrency;
+  }
+  update(user, values) {
+    if (!['owner', 'admin'].includes(user.role)) fail(403, 'administrator_required');
+    if (!values || typeof values !== 'object' || Array.isArray(values)) fail(422, 'invalid_settings');
+    // Validate all entries before mutating live configuration.
+    this.apply(values);
+    this.store.put('settings', { id: 'limits', values: this.read().values, updatedAt: now(), updatedBy: user.id });
+    return this.read();
+  }
+}

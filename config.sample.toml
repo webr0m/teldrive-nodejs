@@ -1,0 +1,36 @@
+# Copy your existing Teldrive config.toml and append the [node] sections below.
+# Existing sections are accepted. Environment variables override mapped settings.
+[server]
+port = 3000
+[db]
+data-source = ''
+[db.pool]
+max-open-connections = 2
+[jwt]
+allowed-users = []
+[tg]
+app-id = 0
+app-hash = ''
+[tg.uploads]
+encryption-key = ''
+[node]
+host = '127.0.0.1'
+public-url = 'https://cloud.webrom.lat'
+mode = 'native'
+storage-backend = 'telegram'
+data-key = ''
+data-dir = './var'
+database-layout = 'legacy'
+database-schema = 'teldrive'
+metadata-schema = 'teldrive_node'
+owner-user-id = ''
+cors-origins = []
+allow-iframe = false
+[node.limits]
+part-size = 16777216
+max-file-size = 107374182400
+concurrent-transfers = 2
+upload-ttl-hours = 168
+rate-limit-per-minute = 300
+login-rate-per-minute = 10
+json-max-bytes = 1048576

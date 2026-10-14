@@ -1,0 +1,7 @@
+packages: []
+ignoredBuiltDependencies:
+  - bufferutil
+  - utf-8-validate
+  - es5-ext
+minimumReleaseAgeExclude:
+  - '@electric-sql/pglite@0.5.10'

@@ -1,0 +1,72 @@
+import { test, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { createApp, byteRange } from '../src/server.mjs';
+import { config } from '../src/config.mjs';
+const directory = await mkdtemp(path.join(os.tmpdir(), 'teldrive-node-test-'));
+const c = config({ CONFIG_FILE: 'none', DATA_KEY: randomBytes(32).toString('base64'), DATA_DIR: directory, STORAGE_BACKEND: 'local', DEMO_AUTH: 'true', PORT: '0', RATE_LIMIT_PER_MINUTE: '10000', LOGIN_RATE_PER_MINUTE: '100' });
+const app = createApp(c); await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
+const base = `http://127.0.0.1:${app.server.address().port}`;
+after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
+let cookie = '';
+async function request(url, method = 'GET', body, headers = {}, auth = true) {
+  const response = await fetch(`${base}/api${url}`, { method, headers: { ...(auth ? { Cookie: cookie } : {}), ...(body !== undefined && !Buffer.isBuffer(body) ? { 'Content-Type': 'application/json' } : {}), ...headers }, body: body === undefined ? undefined : Buffer.isBuffer(body) ? body : JSON.stringify(body) });
+  return response;
+}
+test('authenticated file lifecycle, binary integrity, encryption, shares and administration', async () => {
+  assert.equal((await request('/v1/files')).status, 401);
+  const login = await request('/dev/login', 'POST'); assert.equal(login.status, 200);
+  cookie = login.headers.getSetCookie().map(s => s.split(';')[0]).join('; ');
+  const profile = await (await request('/v1/me')).json(); assert.equal(profile.role, 'owner');
+  const folder = await (await request('/v1/folders', 'POST', { name: 'Documentos' }, { 'Idempotency-Key': '11111111-1111-4111-8111-111111111111' })).json(); assert.ok(folder.id);
+  const retryFolder = await (await request('/v1/folders', 'POST', { name: 'Documentos' }, { 'Idempotency-Key': '11111111-1111-4111-8111-111111111111' })).json(); assert.equal(retryFolder.id, folder.id);
+  assert.equal((await request('/v1/folders', 'POST', { name: 'Otro' }, { 'Idempotency-Key': '11111111-1111-4111-8111-111111111111' })).status, 409);
+  assert.equal((await request('/v1/folders', 'POST', { name: '../escape' })).status, 422);
+  assert.equal((await request(`/v1/files/${folder.id}/move`, 'POST', { parentId: folder.id })).status, 409);
+  const data = randomBytes(1024 * 1024 + 123);
+  const upload = await (await request('/v1/uploads', 'POST', { name: 'archivo.bin', parentId: folder.id, size: data.length, preferredPartSize: 1048576, encryption: true })).json(); assert.ok(upload.id);
+  assert.equal((await request(`/v1/uploads/${upload.id}/complete`, 'POST')).status, 409);
+  for (const [part, bytes] of [[1, data.subarray(0, 1048576)], [2, data.subarray(1048576)]]) {
+    assert.equal((await request(`/v1/uploads/${upload.id}/parts/${part}`, 'PUT', bytes, { 'Content-Type': 'application/octet-stream' })).status, 201);
+  }
+  assert.equal((await request(`/v1/uploads/${upload.id}/parts/2`, 'PUT', data.subarray(1048576), { 'Content-Type': 'application/octet-stream' })).status, 200);
+  assert.equal((await request(`/v1/uploads/${upload.id}/parts/2`, 'PUT', Buffer.alloc(123), { 'Content-Type': 'application/octet-stream' })).status, 409);
+  const completed = await request(`/v1/uploads/${upload.id}/complete`, 'POST'); assert.equal(completed.status, 201);
+  const file = await completed.json(); assert.equal(file.size, data.length);
+  assert.equal((await request(`/v1/uploads/${upload.id}/complete`, 'POST')).status, 200);
+  const download = await request(`/v1/files/${file.id}/content`); assert.equal(download.status, 200); assert.deepEqual(Buffer.from(await download.arrayBuffer()), data);
+  const partial = await request(`/v1/files/${file.id}/content`, 'GET', undefined, { Range: 'bytes=1048500-1048620' }); assert.equal(partial.status, 206); assert.deepEqual(Buffer.from(await partial.arrayBuffer()), data.subarray(1048500, 1048621));
+  assert.equal((await request(`/v1/files/${file.id}/content`, 'GET', undefined, { Range: 'bytes=9000000-' })).status, 416);
+  assert.equal((await request(`/v1/files/${file.id}`, 'PATCH', { name: 'otro.bin' }, { 'If-Match': '"stale"' })).status, 412);
+  const copy = await (await request(`/v1/files/${file.id}/copy`, 'POST', { name: 'copia.bin', parentId: folder.id })).json(); assert.ok(copy.id);
+  const share = await (await request(`/v1/files/${copy.id}/shares`, 'POST', { password: 'test-password', maxDownloads: 3 })).json(); assert.ok(share.token);
+  assert.equal((await request(`/v1/public/shares/${share.token}`, 'GET', undefined, {}, false)).status, 401);
+  assert.equal((await request(`/v1/public/shares/${share.token}/files/${file.id}/content`, 'GET', undefined, { 'X-Share-Password': 'test-password' }, false)).status, 404);
+  const unlocked = await request(`/v1/public/shares/${share.token}/unlock`, 'POST', { password: 'test-password' }, {}, false); assert.equal(unlocked.status, 204);
+  const shareCookie = unlocked.headers.getSetCookie()[0].split(';')[0];
+  const publicDownload = await request(`/v1/public/shares/${share.token}/content`, 'GET', undefined, { Cookie: shareCookie }, false); assert.equal(publicDownload.status, 200); assert.deepEqual(Buffer.from(await publicDownload.arrayBuffer()), data);
+  assert.equal((await request('/v1/admin/settings', 'PATCH', { concurrency: 4, partSize: 2097152 })).status, 200);
+  assert.equal((await request('/v1/admin/settings', 'PATCH', { concurrency: 0 })).status, 422);
+  const settings = await (await request('/v1/admin/settings')).json(); assert.equal(settings.values.concurrency, 4);
+  const originalSession = await (await request(`/v1/uploads/${upload.id}`)).json(); assert.equal(originalSession.partSize, 1048576);
+  const other = app.context.auth.finish({ id: 2, firstName: 'Other' }); app.context.auth.publish(other, { setHeader() {} }, false);
+  assert.equal((await request(`/v1/files/${file.id}`, 'GET', undefined, { Authorization: `Bearer ${other.accessToken}` }, false)).status, 404);
+  assert.equal((await request('/v1/admin/settings', 'GET', undefined, { Authorization: `Bearer ${other.accessToken}` }, false)).status, 403);
+  assert.equal((await request('/v1/files', 'GET', undefined, { Origin: 'https://evil.example' })).status, 403);
+  assert.equal((await request(`/v1/files/${file.id}`, 'DELETE')).status, 204);
+  assert.equal((await request(`/v1/files/${file.id}/purge`, 'DELETE')).status, 204);
+  const copyDownload = await request(`/v1/files/${copy.id}/content`); assert.equal(copyDownload.status, 200); assert.deepEqual(Buffer.from(await copyDownload.arrayBuffer()), data);
+  assert.equal((await request(`/v1/files/${folder.id}`, 'DELETE')).status, 204);
+  assert.equal((await request(`/v1/files/${copy.id}/content`)).status, 404);
+  assert.equal((await request(`/v1/files/${folder.id}/restore`, 'POST')).status, 200);
+  assert.equal((await request('/v1/auth/cookie/logout', 'POST')).status, 204);
+  assert.equal((await request('/v1/me')).status, 401);
+});
+test('range parsing includes suffix, open ranges and malformed requests', () => {
+  assert.deepEqual(byteRange('bytes=-3', 10), { start: 7, end: 9, partial: true });
+  assert.deepEqual(byteRange('bytes=3-', 10), { start: 3, end: 9, partial: true });
+  for (const value of ['bytes=-0', 'bytes=4-2', 'bytes=999999999999999999999-', 'bytes=1-2,4-5']) assert.throws(() => byteRange(value, 10), { status: 416 });
+});

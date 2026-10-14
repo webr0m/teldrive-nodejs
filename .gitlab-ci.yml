@@ -1,0 +1,16 @@
+image: node:24
+stages: [test]
+test:
+  stage: test
+  script:
+    - npm install --global pnpm@11.25.0 --ignore-scripts
+    - pnpm install --frozen-lockfile
+    - pnpm --dir ui install --ignore-workspace --frozen-lockfile
+    - npm run check
+    - npm test
+    - pnpm --dir ui run typecheck
+    - pnpm --dir ui run build
+    - node scripts/package.mjs
+  artifacts:
+    paths:
+      - artifacts/teldrive-nodejs.zip

@@ -1,0 +1,17 @@
+node_modules/
+ui/node_modules/
+ui/dist/
+ui/test-results/
+ui/playwright-report/
+.env
+.env.*
+!.env.example
+var/
+artifacts/
+*.db
+*.db-shm
+*.db-wal
+*.log
+.wrangler/
+config.toml
+!config.sample.toml

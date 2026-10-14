@@ -1,0 +1,19 @@
+{
+  "name": "teldrive-nodejs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native Node.js Telegram drive and optional compatibility gateway",
+  "type": "commonjs",
+  "engines": { "node": ">=22.13.0" },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env app.js",
+    "test": "node --test test/*.test.mjs",
+    "check": "node scripts/check.mjs",
+    "demo": "node scripts/demo.mjs",
+    "package": "node scripts/package.mjs",
+    "build:ui": "pnpm --dir ui run build"
+  },
+  "dependencies": { "@noble/hashes": "2.4.0", "teleproto": "1.230.0", "pg": "8.23.1", "smol-toml": "1.9.1", "tweetnacl": "1.0.3" },
+  "devDependencies": { "@electric-sql/pglite": "0.5.10" },
+  "license": "MIT"
+}
