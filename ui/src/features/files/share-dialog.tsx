@@ -20,6 +20,7 @@ import { AppDialog } from "@/components/dialogs/app-dialog";
 import { copyText } from "@/features/files/download";
 import { newIdempotencyKey } from "@/features/shared/idempotency";
 import { getQueryClient } from "@/lib/queryClient";
+import { useCurrentUser } from "@/auth/use-current-user";
 
 type Permission = "read" | "edit";
 type ExpirationMode = "never" | "1h" | "1d" | "7d" | "30d" | "custom";
@@ -42,6 +43,8 @@ export function ShareDialog({
   file?: FileEntry;
   onOpenChange: (open: boolean) => void;
 }) {
+  const account = useCurrentUser();
+  const supportsGrants = (account.data.capabilities as readonly string[]).includes("files.manageGrants");
   const fileId = file?.id ?? "00000000-0000-0000-0000-000000000000";
   const [peopleSearch, setPeopleSearch] = useState("");
   const deferredPeopleSearch = useDeferredValue(peopleSearch.trim());
@@ -70,7 +73,7 @@ export function ShareDialog({
     ...$api.queryOptions("get", "/v1/files/{fileId}/grants", {
       params: { path: { fileId } },
     }),
-    enabled: Boolean(file),
+    enabled: Boolean(file) && supportsGrants,
   });
   const linksQuery = useQuery({
     ...$api.queryOptions("get", "/v1/files/{fileId}/shares", {
@@ -82,7 +85,7 @@ export function ShareDialog({
     ...$api.queryOptions("get", "/v1/users/search", {
       params: { query: { search: deferredPeopleSearch || "_" } },
     }),
-    enabled: Boolean(file) && deferredPeopleSearch.length >= 2,
+    enabled: Boolean(file) && supportsGrants && deferredPeopleSearch.length >= 2,
   });
 
   const createGrant = $api.useMutation("post", "/v1/files/{fileId}/grants");
@@ -167,7 +170,7 @@ export function ShareDialog({
       }
     >
       <div className="grid gap-5">
-        <section className="grid gap-4 rounded-2xl border border-border bg-default/10 p-4">
+        {supportsGrants ? <section className="grid gap-4 rounded-2xl border border-border bg-default/10 p-4">
           <div>
             <h3 className="text-sm font-semibold">{t("Personas con acceso")}</h3>
             <p className="mt-1 text-xs text-muted">
@@ -328,7 +331,7 @@ export function ShareDialog({
               </p>
             )}
           </div>
-        </section>
+        </section> : null}
 
         <section className="grid gap-4 rounded-2xl border border-border bg-default/10 p-4">
           <div>

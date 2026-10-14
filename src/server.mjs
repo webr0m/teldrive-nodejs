@@ -12,6 +12,8 @@ import { Storage } from './storage.mjs';
 import { Uploads } from './uploads.mjs';
 import { Shares } from './shares.mjs';
 import { Settings } from './settings.mjs';
+import { Playback } from './playback.mjs';
+import { Media } from './media.mjs';
 import { gateway } from './gateway.mjs';
 import { PostgresStore } from './postgres.mjs';
 import { SupabaseStore } from './supabase.mjs';
@@ -201,6 +203,25 @@ for (const method of ['GET', 'HEAD']) {
   for (const suffix of ['/content', '/content/:fileName']) route(method, `/api/v1/files/:fileId${suffix}`, c => content(c, c.catalog.get(c.user.id, c.params.fileId, true)));
   for (const middle of ['', '/files/:fileId']) for (const suffix of ['/content', '/content/:fileName']) route(method, `/api/v1/public/shares/:shareToken${middle}${suffix}`, c => { const s = publicShare(c); return content(c, c.shares.file(s, c.params.fileId), s); }, { public: true });
 }
+route('POST', '/api/v1/files/:fileId/playback', c => result(c.playback.create(c.catalog.get(c.user.id, c.params.fileId, true), c.session), 201));
+route('POST', '/api/v1/public/shares/:shareToken/files/:fileId/playback', c => { const share = publicShare(c); return result(c.playback.create(c.shares.file(share, c.params.fileId), undefined, share), 201); }, { public: true });
+for (const method of ['GET','HEAD']) route(method, '/api/v1/playback', c => {
+  const { file, share } = c.playback.resolve(c.query.get('ticket'));
+  const mode = c.query.get('mode') || 'original';
+  if (!['original','audio','video'].includes(mode)) fail(422, 'invalid_playback_mode');
+  if (mode !== 'original') {
+    if(c.req.method === 'HEAD') { if(!c.media.available()) fail(503,'media_conversion_unavailable'); return result(undefined,200,{'Content-Type':mode==='audio'?'audio/mpeg':'video/mp4','Accept-Ranges':'none'}); }
+    return c.media.stream(c);
+  }
+  if (c.req.method !== 'HEAD') c.playback.consume(c.query.get('ticket'));
+  return content(c, file);
+}, { public: true });
+route('GET', '/api/v1/playback/tracks', async c => result(await c.media.tracks(c.query.get('ticket'))), { public: true });
+route('GET', '/api/v1/playback/subtitles', c => c.media.subtitles(c), { public: true });
+route('POST', '/api/v1/casting/relay', c => {
+  const { file, grant } = c.playback.resolve(c.body.ticket); if (file.ownerId !== c.user.id) fail(403, 'ticket_owner_required');
+  return result({ addresses: [`${c.config.publicUrl}/api/v1`], expiresAt: grant.expiresAt }, 201);
+});
 
 async function json(req, max) {
   let length = 0, chunks = [];
@@ -223,7 +244,8 @@ export function createApp(config, overrides = {}) {
   if (!proxy) {
     const store = overrides.store || (config.databaseTransport === 'supabase' ? new SupabaseStore(config) : config.databaseUrl ? new PostgresStore(config) : new Store(config.dataDir)), catalog = new Catalog(store), telegram = overrides.telegram || new Telegram(store, config);
     const auth = new Auth(store, config, telegram), storage = overrides.storage || new Storage(config, telegram), uploads = new Uploads(store, catalog, storage, config), shares = new Shares(store, catalog, config), settings = new Settings(store, config, uploads);
-    context = { store, catalog, telegram, auth, storage, uploads, shares, settings, config };
+    context = { store, catalog, telegram, auth, storage, uploads, shares, settings, config, playback: new Playback(store, catalog, shares, config) };
+    context.media = new Media(config, context.playback); context.playback.media = context.media;
   }
   const cleanupTimer = context ? setInterval(() => { void context.uploads.drainCleanup().catch(() => {}); }, 60000).unref() : undefined;
   const server = http.createServer(async (req, res) => {
@@ -265,7 +287,7 @@ export function createApp(config, overrides = {}) {
         } else send(res, await found.handler(c));
         return;
       }
-      if (url.pathname.startsWith('/api/')) fail(404, 'operation_not_available', 'This operation is not implemented in native mode; consult docs/MIGRATION.md');
+      if (url.pathname.startsWith('/api/')) fail(501, 'operation_not_available', 'Esta función todavía no está disponible en este servidor.');
       if (!['GET', 'HEAD'].includes(req.method)) fail(405, 'method_not_allowed');
       if (config.demo && !cookies(req).teldrive_access) context.auth.publish(context.auth.finish({ id: 1, firstName: 'Demo local' }), res, true);
       let pathname; try { pathname = decodeURIComponent(url.pathname); } catch { fail(400, 'invalid_path_encoding'); }

@@ -154,6 +154,15 @@ paths:
             minimum: 0
             maximum: 1024
           explode: false
+        - name: video
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+            maximum: 1024
+          explode: false
         - name: subtitle
           in: query
           required: false

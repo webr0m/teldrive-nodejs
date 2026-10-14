@@ -2669,6 +2669,7 @@ export interface operations {
                 mode?: "original" | "audio" | "video";
                 start?: number;
                 audio?: number;
+                video?: number;
                 subtitle?: number;
                 /** @description Force a browser download instead of inline display. */
                 download?: components["parameters"]["FileContentRequestOptions.download"];

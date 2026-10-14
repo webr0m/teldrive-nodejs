@@ -7,6 +7,7 @@ test:
     - pnpm install --frozen-lockfile
     - pnpm --dir ui install --ignore-workspace --frozen-lockfile
     - npm run check
+    - node scripts/install-media.mjs
     - npm test
     - pnpm --dir ui run build
     - pnpm --dir ui run typecheck

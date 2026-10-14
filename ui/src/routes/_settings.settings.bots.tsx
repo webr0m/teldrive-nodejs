@@ -66,16 +66,16 @@ function BotsSettings() {
       await refresh();
       if (result.bots.length > 0) {
         toast.success(
-          `${result.bots.length} bot${result.bots.length === 1 ? "" : "s"} queued for verification`,
+          `${result.bots.length} bot${result.bots.length === 1 ? " verificado" : "s verificados"}`,
         );
       }
       if (result.failedIndexes.length > 0) {
         toast.warning(
-          `${result.failedIndexes.length} token${result.failedIndexes.length === 1 ? "" : "s"} had an invalid format`,
+          `${result.failedIndexes.length} bot${result.failedIndexes.length === 1 ? " no se pudo verificar o añadir a los canales" : "s no se pudieron verificar o añadir a los canales"}`,
         );
       }
     } catch (error) {
-      toast.error(t("No se pudieron programar los bots"), { description: userMessage(error) });
+      toast.error(t("No se pudieron añadir los bots"), { description: userMessage(error) });
     } finally {
       setIsAddingBots(false);
     }
@@ -90,7 +90,7 @@ function BotsSettings() {
       <SettingsSection
         title={t("Añadir bots")}
         description={t(
-          "Pega una clave de BotFather por línea. Los bots se guardan al instante y los canales existentes se actualizan en segundo plano.",
+          "Pega una clave de BotFather por línea. Cada bot se verifica y se añade a los canales existentes antes de activarse. Espera a que termine la operación.",
         )}
       >
         <SettingsRow

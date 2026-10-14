@@ -15,3 +15,5 @@ El hosting reseller impone límites LVE de CPU, memoria y procesos; configurarlo
 Fuentes: [Node.js en Namecheap](https://www.namecheap.com/support/knowledgebase/article.aspx/10047/2182/how-to-work-with-nodejs-app/), [límites LVE](https://www.namecheap.com/support/knowledgebase/article.aspx/1127/103/a-handy-guide-to-resource-limits-or-what-is-lve/), [límites de conexión Cloudflare](https://developers.cloudflare.com/fundamentals/reference/connection-limits/).
 
 El archivo de estado de publicación debe distinguir código subido de servicio desplegado y pruebas reales completadas.
+
+Para habilitar detección de pistas y conversión de audio/vídeo, ejecuta `node scripts/install-media.mjs` después de instalar las dependencias. Este paso instala únicamente los binarios de los dos paquetes fijados, manteniendo desactivados los demás scripts de instalación. Se pueden usar rutas propias mediante `FFMPEG_PATH` y `FFPROBE_PATH`. Los recursos de conversión se ajustan en «Límites del servidor».

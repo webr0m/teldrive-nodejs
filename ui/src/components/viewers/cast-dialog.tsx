@@ -45,7 +45,7 @@ export function CastDialog({
     : `${window.location.origin}/api/v1`;
   const [base, setBase] = useState(initialBase);
   const [addresses, setAddresses] = useState<string[]>([]);
-  const [compatible, setCompatible] = useState(true);
+  const [compatible, setCompatible] = useState(grant?.conversionAvailable ?? false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [devices, setDevices] = useState<Device[]>([]);

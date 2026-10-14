@@ -1,0 +1,36 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { randomBytes } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import { config } from '../src/config.mjs';
+import { createApp } from '../src/server.mjs';
+const require = createRequire(import.meta.url), ffmpeg=require('ffmpeg-static'), ffprobe=require('@derhuerst/ffprobe-static');
+test('real media probe and conversion select video and audio streams through authenticated file tickets', { skip: !existsSync(ffmpeg) || !existsSync(ffprobe) }, async () => {
+  const directory=await mkdtemp(path.join(os.tmpdir(),'td-media-'));
+  let app;
+  try {
+    const filename=path.join(directory,'two-tracks.mkv');
+    const generated=spawnSync(ffmpeg,['-v','error','-f','lavfi','-i','color=c=red:s=160x90:r=10:d=1','-f','lavfi','-i','color=c=blue:s=96x64:r=10:d=1','-f','lavfi','-i','sine=frequency=440:sample_rate=44100:duration=1','-f','lavfi','-i','sine=frequency=880:sample_rate=48000:duration=1','-map','0:v','-map','1:v','-map','2:a','-map','3:a','-c:v','libx264','-threads','1','-c:a','aac','-metadata:s:a:0','language=spa','-metadata:s:a:1','language=eng','-y',filename],{windowsHide:true});
+    assert.equal(generated.status,0,generated.stderr?.toString());
+    const c=config({CONFIG_FILE:'none',DATA_KEY:randomBytes(32).toString('base64'),DATA_DIR:directory,STORAGE_BACKEND:'local',DEMO_AUTH:'true',PORT:'0',MEDIA_ENABLED:'true',MEDIA_MAX_WIDTH:'1280'});
+    app=createApp(c); await new Promise(resolve=>app.server.listen(0,'127.0.0.1',resolve)); c.publicUrl=`http://127.0.0.1:${app.server.address().port}`;
+    const login=await fetch(`${c.publicUrl}/api/dev/login`,{method:'POST'}), cookie=login.headers.getSetCookie().map(s=>s.split(';')[0]).join('; ');
+    const data=await readFile(filename), part=await app.context.storage.put('1',filename,data.length,false);
+    const file=app.context.catalog.create('1',{name:'tracks.mkv'},'file',{size:data.length,mimeType:'video/x-matroska',parts:[{...part,partNo:1}]});
+    const grant=await (await fetch(`${c.publicUrl}/api/v1/files/${file.id}/playback`,{method:'POST',headers:{Cookie:cookie}})).json(); assert.equal(grant.conversionAvailable,true);
+    const tracksResponse=await fetch(`${c.publicUrl}/api/v1/playback/tracks?ticket=${grant.ticket}`); assert.equal(tracksResponse.status,200);
+    const {tracks}=await tracksResponse.json(); assert.equal(tracks.filter(t=>t.kind==='video').length,2); assert.equal(tracks.filter(t=>t.kind==='audio').length,2); assert.ok(tracks.some(t=>t.language==='spa'));
+    const chosenVideo=tracks.filter(t=>t.kind==='video')[1], chosenAudio=tracks.filter(t=>t.kind==='audio')[1];
+    const stream=await fetch(`${c.publicUrl}/api/v1/playback?ticket=${grant.ticket}&mode=video&video=${chosenVideo.index}&audio=${chosenAudio.index}`); assert.equal(stream.status,200); assert.equal(stream.headers.get('content-type'),'video/mp4');
+    const converted=path.join(directory,'converted.mp4'); await writeFile(converted,Buffer.from(await stream.arrayBuffer()));
+    const inspected=spawnSync(ffprobe,['-v','error','-show_streams','-of','json',converted],{windowsHide:true}); assert.equal(inspected.status,0);
+    const output=JSON.parse(inspected.stdout).streams;
+    assert.equal(output.find(s=>s.codec_type==='video').width,96); assert.equal(output.find(s=>s.codec_type==='video').height,64); assert.equal(output.find(s=>s.codec_type==='audio').sample_rate,'48000');
+    assert.equal((await fetch(`${c.publicUrl}/api/v1/playback?ticket=${grant.ticket}&mode=video&audio=${chosenVideo.index}`)).status,422);
+  } finally { if(app) await app.close(); await rm(directory,{recursive:true,force:true}); }
+});

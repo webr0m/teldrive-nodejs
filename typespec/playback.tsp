@@ -30,6 +30,7 @@ op streamPlayback(
   @query mode?: "original" | "audio" | "video" = "original",
   @query @minValue(0) @maxValue(86400) start?: float64 = 0,
   @query @minValue(0) @maxValue(1024) audio?: int32,
+  @query @minValue(0) @maxValue(1024) video?: int32,
   @query @minValue(0) @maxValue(1024) subtitle?: int32,
   ...FileContentRequestOptions,
 ): FileContentResponse | FilePartialContentResponse | EmptyResponse<304> | ErrorResponse<401> | ErrorResponse<404> | ErrorResponse<416> | ErrorResponse<422> | ErrorResponse<429> | ErrorResponse<503>;

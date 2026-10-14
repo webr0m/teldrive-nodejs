@@ -15,8 +15,9 @@ export function playbackUrl(
   start = 0,
   audio?: number,
   subtitle?: number,
+  video?: number,
 ) {
-  return `/api/v1/playback?${new URLSearchParams({ ticket, mode, start: String(start), ...(audio !== undefined ? { audio: String(audio) } : {}), ...(subtitle !== undefined ? { subtitle: String(subtitle) } : {}) })}`;
+  return `/api/v1/playback?${new URLSearchParams({ ticket, mode, start: String(start), ...(audio !== undefined ? { audio: String(audio) } : {}), ...(subtitle !== undefined ? { subtitle: String(subtitle) } : {}), ...(video !== undefined ? { video: String(video) } : {}) })}`;
 }
 type Track = {
   index: number;
@@ -51,6 +52,7 @@ export function CompatibleMedia({
   const [tracks, setTracks] = useState<Track[]>([]);
   const [tracksNotice, setTracksNotice] = useState("");
   const [audio, setAudio] = useState<number>();
+  const [videoTrack, setVideoTrack] = useState<number>();
   const [subtitle, setSubtitle] = useState<number>();
   const [sourceStart, setSourceStart] = useState(0);
   const [castStart, setCastStart] = useState(0);
@@ -73,10 +75,12 @@ export function CompatibleMedia({
     return next;
   }, [file.id, session]);
   useEffect(() => {
-    if (kind !== "video") return;
     let active = true;
     void ensureGrant()
       .then(async (next) => {
+        if (!active) return;
+        setSource(playbackUrl(next.ticket));
+        if (kind !== "video") return;
         const data = (await (
           await apiFetch(`/v1/playback/tracks?${new URLSearchParams({ ticket: next.ticket })}`)
         ).json()) as { available: boolean; tracks: Track[] };
@@ -85,6 +89,9 @@ export function CompatibleMedia({
           const audioTracks = data.tracks.filter((track) => track.kind === "audio");
           const preferred = audioTracks.find((track) => track.default) ?? audioTracks[0];
           setAudio(preferred?.index);
+          const videos = data.tracks.filter(track => track.kind === "video");
+          const preferredVideo = videos.find(track => track.default) ?? videos[0];
+          setVideoTrack(preferredVideo?.index);
           // Some browsers decode an MKV's video while silently dropping its audio.
           // Select its declared default track and convert before playback starts.
           const containerNeedsConversion = /\.(mkv|avi|wmv|flv|m2ts|ts|vob)$/i.test(file.name);
@@ -95,13 +102,13 @@ export function CompatibleMedia({
             next.conversionAvailable &&
             (containerNeedsConversion || audioNeedsConversion || nonFirstDefault)
           ) {
-            setSource(playbackUrl(next.ticket, "video", 0, preferred?.index));
+            setSource(playbackUrl(next.ticket, "video", 0, preferred?.index, undefined, preferredVideo?.index));
             setConverted(true);
           }
           if (!data.available)
             setTracksNotice(
               t(
-                "Instala FFprobe junto a FFmpeg en el servidor para detectar pistas de audio y subtítulos.",
+                "Reproducción del archivo original. La selección de pistas y la conversión aún no están disponibles en este servidor.",
               ),
             );
         }
@@ -113,11 +120,12 @@ export function CompatibleMedia({
       active = false;
     };
   }, [ensureGrant, kind, file.name]);
-  const chooseTracks = async (nextAudio: number | undefined, nextSubtitle: number | undefined) => {
+  const chooseTracks = async (nextAudio: number | undefined, nextSubtitle: number | undefined, nextVideo = videoTrack) => {
     nextAudio ??=
       tracks.find((track) => track.kind === "audio" && track.default)?.index ??
       tracks.find((track) => track.kind === "audio")?.index;
     setAudio(nextAudio);
+    setVideoTrack(nextVideo);
     setSubtitle(nextSubtitle);
     const selected = tracks.find((track) => track.index === nextSubtitle);
     if (nextAudio === undefined && !selected?.bitmap && !converted) return;
@@ -139,6 +147,7 @@ export function CompatibleMedia({
           seconds,
           nextAudio,
           selected?.bitmap ? nextSubtitle : undefined,
+          nextVideo,
         ),
       );
       setConverted(true);
@@ -174,6 +183,7 @@ export function CompatibleMedia({
           seconds,
           audio,
           tracks.find((track) => track.index === subtitle)?.bitmap ? subtitle : undefined,
+          videoTrack,
         ),
       );
       setConverted(true);
@@ -284,6 +294,14 @@ export function CompatibleMedia({
                         {trackLabel(track)}
                       </option>
                     ))}
+                </select>
+              </label>
+            ) : null}
+            {tracks.filter(track => track.kind === "video").length > 1 ? (
+              <label className="flex items-center gap-2 text-sm">
+                {t("Vídeo")}
+                <select aria-label={t("Pista de vídeo")} className="min-h-11 max-w-64 rounded-lg border border-white/30 bg-black px-3" value={videoTrack ?? ""} disabled={pending} onChange={event => void chooseTracks(audio, subtitle, Number(event.target.value))}>
+                  {tracks.filter(track => track.kind === "video").map(track => <option key={track.index} value={track.index}>{track.title || `Vídeo ${track.index + 1}`} · {track.codec}</option>)}
                 </select>
               </label>
             ) : null}
