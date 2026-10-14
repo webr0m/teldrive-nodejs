@@ -8,8 +8,8 @@ test:
     - pnpm --dir ui install --ignore-workspace --frozen-lockfile
     - npm run check
     - npm test
-    - pnpm --dir ui run typecheck
     - pnpm --dir ui run build
+    - pnpm --dir ui run typecheck
     - node scripts/package.mjs
   artifacts:
     paths:
