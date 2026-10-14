@@ -32,5 +32,11 @@ test('real media probe and conversion select video and audio streams through aut
     const output=JSON.parse(inspected.stdout).streams;
     assert.equal(output.find(s=>s.codec_type==='video').width,96); assert.equal(output.find(s=>s.codec_type==='video').height,64); assert.equal(output.find(s=>s.codec_type==='audio').sample_rate,'48000');
     assert.equal((await fetch(`${c.publicUrl}/api/v1/playback?ticket=${grant.ticket}&mode=video&audio=${chosenVideo.index}`)).status,422);
+    let nestedRequests=0; app.server.on('request',req=>{if(req.url.includes('/nested-playlist-canary'))nestedRequests++;});
+    const playlist=path.join(directory,'blocked.m3u8'), bytes=Buffer.from(`#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\n${c.publicUrl}/nested-playlist-canary.ts\n#EXT-X-ENDLIST\n`);
+    await writeFile(playlist,bytes); const stored=await app.context.storage.put('1',playlist,bytes.length,false);
+    const blocked=app.context.catalog.create('1',{name:'blocked.m3u8'},'file',{size:bytes.length,parts:[{...stored,partNo:1}]});
+    const blockedGrant=app.context.playback.create(blocked);
+    await assert.rejects(()=>app.context.media.tracks(blockedGrant.ticket),{code:'media_probe_failed'}); assert.equal(nestedRequests,0,'uploaded playlists cannot fetch another URL');
   } finally { if(app) await app.close(); await rm(directory,{recursive:true,force:true}); }
 });
