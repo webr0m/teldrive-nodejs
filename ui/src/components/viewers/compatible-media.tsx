@@ -44,7 +44,7 @@ export function CompatibleMedia({
   session?: PlaybackSession;
 }) {
   const [grant, setGrant] = useState(session);
-  const [source, setSource] = useState(url);
+  const [source, setSource] = useState("");
   const [converted, setConverted] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
@@ -79,8 +79,7 @@ export function CompatibleMedia({
     void ensureGrant()
       .then(async (next) => {
         if (!active) return;
-        setSource(playbackUrl(next.ticket));
-        if (kind !== "video") return;
+        if (kind !== "video") { setSource(playbackUrl(next.ticket)); return; }
         const data = (await (
           await apiFetch(`/v1/playback/tracks?${new URLSearchParams({ ticket: next.ticket })}`)
         ).json()) as { available: boolean; tracks: Track[] };
@@ -104,7 +103,7 @@ export function CompatibleMedia({
           ) {
             setSource(playbackUrl(next.ticket, "video", 0, preferred?.index, undefined, preferredVideo?.index));
             setConverted(true);
-          }
+          } else setSource(playbackUrl(next.ticket));
           if (!data.available)
             setTracksNotice(
               t(
@@ -114,7 +113,7 @@ export function CompatibleMedia({
         }
       })
       .catch((cause) => {
-        if (active) setTracksNotice(userMessage(cause));
+        if (active) { setTracksNotice(userMessage(cause)); const next = grantRef.current.value; if(next) setSource(playbackUrl(next.ticket)); }
       });
     return () => {
       active = false;
@@ -198,7 +197,7 @@ export function CompatibleMedia({
   return (
     <div ref={root} className="flex h-full min-h-0 w-full flex-col bg-black text-white">
       <div className="relative z-0 min-h-0 flex-1 overflow-hidden">
-        {kind === "video" ? (
+        {!source ? <p className="p-6">{t("Preparando reproducción…")}</p> : kind === "video" ? (
           <Suspense fallback={<p className="p-6">{t("Cargando vídeo…")}</p>}>
             <VideoViewer
               file={file}
@@ -368,7 +367,7 @@ export function CompatibleMedia({
             className="min-h-11"
             variant="secondary"
             onPress={() => {
-              setSource(url);
+              setSource(grant ? playbackUrl(grant.ticket) : url);
               setConverted(false);
               setSourceStart(0);
               setAudio(undefined);

@@ -30,12 +30,15 @@ export class Media {
   }
   async collect(binary, args, seconds) {
     const child = this.spawn(binary, args, { windowsHide: true, stdio: ['ignore','pipe','pipe'] });
-    let size = 0; const chunks = []; child.stderr.resume();
+    let size = 0, diagnostic = ''; const chunks = []; child.stderr.on('data', b => { if(diagnostic.length < 4096) diagnostic += b.toString(); });
     const timer = setTimeout(()=>child.kill('SIGKILL'), seconds * 1000).unref();
     try {
       const completion = once(child,'close'); completion.catch(()=>{});
       for await (const bytes of child.stdout) { size += bytes.length; if (size > 2*1024*1024) { child.kill('SIGKILL'); fail(503,'media_metadata_too_large'); } chunks.push(bytes); }
-      const [code] = await completion; if (code !== 0) fail(503,'media_probe_failed','No se pudieron consultar las pistas del archivo.');
+      const [code,signal] = await completion; if (code !== 0) {
+        console.error(JSON.stringify({ event:'media_probe_failed', code, signal, reasons:['403','404','429','TLS','certificate','timed out','Cannot allocate memory','Resource temporarily unavailable','Permission denied','Invalid data','End of file'].filter(label=>diagnostic.includes(label)) }));
+        fail(503,'media_probe_failed','No se pudieron consultar las pistas del archivo.');
+      }
       return Buffer.concat(chunks).toString();
     } catch (error) { if (error.status) throw error; fail(503,'media_process_failed'); }
     finally { clearTimeout(timer); child.kill('SIGKILL'); }

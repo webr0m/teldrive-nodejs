@@ -24,7 +24,7 @@ export class Catalog {
     return parent.id;
   }
   public(file) { const { ownerId, parts, bookmark, _legacyRoot, ...value } = file; return value; }
-  checkMatch(file, header) { if (header && header !== '*' && header !== this.etag(file)) fail(412, 'generation_changed'); }
+  checkMatch(file, header) { if (header && header !== '*' && header !== this.etag(file) && header !== `"${file.generation}"`) fail(412, 'generation_changed'); }
   etag(file) { return `"${file.id}:${file.generation}"`; }
   conflict(userId, parentId, wanted, policy = 'fail', ignore) {
     if (policy === 'error') policy = 'fail';

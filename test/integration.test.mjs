@@ -52,6 +52,8 @@ test('authenticated file lifecycle, binary integrity, encryption, shares and adm
   app.context.auth.revoke(shortPair._session);
   assert.equal((await request(`/v1/playback?ticket=${shortGrant.ticket}`, 'GET', undefined, {}, false)).status, 401);
   assert.equal((await request(`/v1/files/${file.id}`, 'PATCH', { name: 'otro.bin' }, { 'If-Match': '"stale"' })).status, 412);
+  const renamed = await request(`/v1/files/${file.id}`, 'PATCH', { name: 'archivo.bin' }, { 'If-Match': `"${file.generation}"` }); assert.equal(renamed.status,200);
+  assert.equal((await request(`/v1/files/${file.id}`, 'PATCH', { name: 'stale.bin' }, { 'If-Match': `"${file.generation}"` })).status,412);
   const copy = await (await request(`/v1/files/${file.id}/copy`, 'POST', { name: 'copia.bin', parentId: folder.id })).json(); assert.ok(copy.id);
   const share = await (await request(`/v1/files/${copy.id}/shares`, 'POST', { password: 'test-password', maxDownloads: 3 })).json(); assert.ok(share.token);
   assert.equal((await request(`/v1/public/shares/${share.token}`, 'GET', undefined, {}, false)).status, 401);

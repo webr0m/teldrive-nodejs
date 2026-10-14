@@ -5,6 +5,7 @@ import { invalidResponse, normalizeApiError, userMessage } from "@/api/errors";
 import type { FileEntry, NameConflictPolicy, UploadPart, UploadSession } from "@/api/types";
 import { newClientId } from "@/features/shared/client-id";
 import { newIdempotencyKey } from "@/features/shared/idempotency";
+import { getQueryClient } from "@/lib/queryClient";
 
 export type UploadTaskStatus =
   | "queued"
@@ -456,6 +457,12 @@ async function runTask(taskId: string) {
       fileId: completed.id,
       error: undefined,
     });
+    const queryClient = getQueryClient();
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["get", "/v1/files"] }),
+      queryClient.invalidateQueries({ queryKey: ["get", "/v1/files/statistics/drive"] }),
+      queryClient.invalidateQueries({ queryKey: ["get", "/v1/storage/dashboard"] }),
+    ]).catch(() => {});
   } catch (error) {
     if (controller.signal.aborted) {
       const current = useUploadStore.getState().tasks.find((item) => item.id === taskId);
