@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
-import { id, now, expires, expired, fail, CryptoBox, Locks } from './core.mjs';
+import { id, now, expires, expired, fail, CryptoBox, Locks, hash } from './core.mjs';
 import { SecureBlob } from './secureblob.mjs';
+import { hostname } from 'node:os';
 const require = createRequire(import.meta.url);
 const { TelegramClient, Api } = require('teleproto');
 const { StringSession } = require('teleproto/sessions');
@@ -34,9 +35,10 @@ export class Telegram {
     });
   }
   botSummary(bot) { return { id: Number(bot.id), username: bot.username, enabled: bot.enabled, createdAt: bot.createdAt }; }
+  botStateId(bot) { return hash(`${this.config.telegramInstanceId || `${hostname()}:${process.pid}`}:${bot.id}`); }
   eligibleBots(userId, operation) {
     if (operation === 'download' && this.config.downloadBots === 0) return [];
-    let bots = this.store.list('bots', userId).filter(b => b.enabled && !(Date.parse(this.store.get('bot-state', b.id)?.retryAfter || '') > Date.now()));
+    let bots = this.store.list('bots', userId).filter(b => b.enabled && !(Date.parse(this.store.get('bot-state', this.botStateId(b))?.retryAfter || '') > Date.now()));
     if (operation === 'download') bots = bots.slice(0, this.config.downloadBots ?? 20);
     if (!bots.length) return [];
     const key = `${userId}:${operation}`, index = this.rotation.get(key) || 0; this.rotation.set(key, (index + 1) % bots.length);
@@ -44,10 +46,10 @@ export class Telegram {
   }
   async withBot(bot, fn) {
     return this.locks.run(`bot:${bot.id}`, async () => {
-      // Existing Go sessions are Telethon strings; new Node sessions stay in the
-      // sidecar so an authentication refresh never rewrites the Go session.
-      const state = this.store.get('bot-state', bot.id);
-      let session = state?.session ? this.box.decode(state.session, `bot-session:${bot.id}`) : bot.sessionCiphertext ? this.secureBlob.open(bot.sessionCiphertext, 'bot-session').toString() : '';
+      // Each deployment authenticates a distinct key. Reusing Go's MTProto key
+      // from another IP can invalidate it, even if its stored bytes are unchanged.
+      const state = this.store.get('bot-state', this.botStateId(bot));
+      let session = state?.dedicatedAuth && state.session ? this.box.decode(state.session, `bot-session:${bot.id}`) : '';
       let client = this.make(session);
       try {
         await client.connect();
@@ -55,8 +57,9 @@ export class Telegram {
           const token = this.secureBlob.open(bot.tokenCiphertext, 'bot-token').toString();
           await client.invoke(new Api.auth.ImportBotAuthorization({ apiId: this.config.apiId, apiHash: this.config.apiHash, botAuthToken: token }));
         }
+        const current = { id: this.botStateId(bot), botId: bot.id, ownerId: bot.ownerId, dedicatedAuth: true, session: this.box.encode(client.session.save(), `bot-session:${bot.id}`), lastUsedAt: now() };
+        this.store.put('bot-state', current);
         const value = await fn(client);
-        this.store.put('bot-state', { id: bot.id, ownerId: bot.ownerId, session: this.box.encode(client.session.save(), `bot-session:${bot.id}`), lastUsedAt: now() });
         return value;
       } finally { await client.disconnect(); }
     });
@@ -68,7 +71,7 @@ export class Telegram {
       catch (error) {
         if (signal?.aborted) return;
         // Channel-specific failures must not disable a shared bot in the Go app.
-        const state = this.store.get('bot-state', bot.id) || { id: bot.id, ownerId: bot.ownerId };
+        const state = this.store.get('bot-state', this.botStateId(bot)) || { id: this.botStateId(bot), botId: bot.id, ownerId: bot.ownerId };
         state.retryAfter = expires(Math.max(this.config.botRetrySeconds ?? 60, Number(error.seconds) || 0) * 1000);
         state.lastError = 'telegram_bot_unavailable'; this.store.put('bot-state', state);
       }
@@ -98,7 +101,7 @@ export class Telegram {
           }
         });
         bot.enabled = true; this.store.put('bots', bot);
-        this.store.put('bot-state', { id: bot.id, ownerId: userId, session: this.box.encode(client.session.save(), `bot-session:${bot.id}`) });
+        this.store.put('bot-state', { id: this.botStateId(bot), botId: bot.id, ownerId: userId, dedicatedAuth: true, session: this.box.encode(client.session.save(), `bot-session:${bot.id}`) });
         bots.push(this.botSummary(bot));
       } catch { failedIndexes.push(index); }
       finally { await client.disconnect(); }

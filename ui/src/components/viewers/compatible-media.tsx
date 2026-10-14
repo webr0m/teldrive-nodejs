@@ -136,7 +136,9 @@ export function CompatibleMedia({
         throw new Error(
           t("La selección de pistas del contenedor necesita FFmpeg. Desktop lo incluye."),
         );
-      const seconds = Math.min(86400, sourceStart + (getVideo()?.currentTime || 0));
+      const element = getVideo();
+      const finished = element?.ended || (Number.isFinite(element?.duration) && !!element && element.currentTime >= element.duration - 0.1);
+      const seconds = finished ? 0 : Math.min(86400, sourceStart + (element?.currentTime || 0));
       setSourceStart(seconds);
       setStart(String(Math.floor(seconds)));
       setSource(

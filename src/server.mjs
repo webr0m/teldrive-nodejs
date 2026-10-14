@@ -120,7 +120,7 @@ route('GET', '/api/v1/bots', c => result(page(c.store.list('bots', c.user.id).ma
 route('POST', '/api/v1/bots', async c => { if (c.config.backend !== 'telegram') fail(503, 'telegram_not_configured'); return result(await c.telegram.addBots(c.user.id, c.body.tokens)); });
 route('DELETE', '/api/v1/bots/:botId', c => {
   const bot = c.store.get('bots', c.params.botId); if (!bot || bot.ownerId !== c.user.id) fail(404, 'bot_not_found');
-  c.store.transaction(() => { c.store.delete('bots', bot.id, c.user.id); c.store.delete('bot-state', bot.id); }); return empty();
+  c.store.transaction(() => { c.store.delete('bots', bot.id, c.user.id); for(const state of c.store.list('bot-state',c.user.id)) if(state.botId===bot.id || state.id===bot.id) c.store.delete('bot-state',state.id); }); return empty();
 });
 route('GET', '/api/v1/channels', c => result(page(c.store.list('channels', c.user.id).map(({ ownerId, ...channel }) => ({ ...channel, id: Number(channel.id) })), c.query)));
 route('GET', '/api/v1/channels/discover', async c => { if (c.config.backend !== 'telegram') fail(503, 'telegram_not_configured'); return result((await c.telegram.discover(c.user.id)).map(ch => ({ ...ch, id: Number(ch.id) }))); });

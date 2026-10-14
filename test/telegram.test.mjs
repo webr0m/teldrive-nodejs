@@ -37,6 +37,16 @@ test('channel resolution works for bots without GetDialogs', async () => {
   const entity = await t.entity({ invoke: async request => { called=request; return { chats: [channel] }; } }, '99');
   assert.ok(called instanceof Api.channels.GetChannels); assert.equal(String(called.id[0].channelId), '99'); assert.equal(String(called.id[0].accessHash), '0'); assert.equal(entity, channel);
 });
+test('Node authenticates its own bot key instead of opening the Go session', async () => {
+  const { store, telegram: t }=fixture(), bot=store.get('bots','1');
+  bot.sessionCiphertext='must-not-open-the-Go-key'; bot.tokenCiphertext=t.secureBlob.seal('1:fixture-token','bot-token').toString('hex');
+  let authenticated=false;
+  t.make=session=>{ assert.equal(session,''); return { connect:async()=>{}, checkAuthorization:async()=>false, invoke:async request=>{assert.equal(request.botAuthToken,'1:fixture-token');authenticated=true;}, session:{save:()=> 'independent-node-key'}, disconnect:async()=>{} }; };
+  assert.equal(await t.withBot(bot,async()=>42),42); assert.equal(authenticated,true);
+  const state=store.get('bot-state',t.botStateId(bot)); assert.equal(state.dedicatedAuth,true); assert.equal(t.box.decode(state.session,'bot-session:1'),'independent-node-key');
+  const previous=t.botStateId(bot); t.config.telegramInstanceId='another-node-instance'; assert.notEqual(t.botStateId(bot),previous);
+  assert.equal(bot.sessionCiphertext,'must-not-open-the-Go-key');
+});
 test('unaligned range resumes after partial bot failure without duplicating bytes', async () => {
   const { telegram: t } = fixture(), data = randomBytes(2 * 512 * 1024 + 100), chunks = [], calls = [];
   const client = (broken) => ({ async *iterDownload(_message, params) {

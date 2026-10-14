@@ -44,7 +44,7 @@ BEGIN
       FROM teldrive.users u LEFT JOIN teldrive_node.records n ON n.bucket='users' AND n.id=u.user_id::text
       WHERE action<>'get' OR u.user_id::text=wanted;
     ELSIF bucket='bots' THEN
-      SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.to_jsonb(b)),'[]'::jsonb) INTO items FROM teldrive.bots b
+      SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.to_jsonb(b)-'session'),'[]'::jsonb) INTO items FROM teldrive.bots b
       WHERE (action<>'get' OR b.bot_id::text=wanted) AND (owner_id IS NULL OR b.user_id::text=owner_id);
     ELSIF bucket='channels' THEN
       SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.to_jsonb(c)),'[]'::jsonb) INTO items FROM teldrive.channels c
