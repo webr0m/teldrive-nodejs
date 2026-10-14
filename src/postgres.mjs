@@ -4,7 +4,7 @@ import { id, now, fail, category } from './core.mjs';
 export class PostgresStore {
   constructor(config) {
     this.config = config; this.schema = `"${config.databaseSchema}"`; this.metadata = `"${config.metadataSchema}"`;
-    this.worker = new Worker(new URL('./pg-worker.mjs', import.meta.url), { workerData: { url: config.databaseUrl, fixture: config.testFixture } });
+    this.worker = new Worker(new URL('./pg-worker.mjs', import.meta.url), { execArgv: [], workerData: { url: config.databaseUrl, fixture: config.testFixture } });
     this.control = new SharedArrayBuffer(8); this.output = new SharedArrayBuffer(32 * 1024 * 1024);
     this.worker.unref();
     if (config.databaseLayout !== 'native') {
@@ -117,3 +117,4 @@ export class PostgresStore {
   }
   close() { this.worker.terminate(); }
 }
+

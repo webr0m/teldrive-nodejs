@@ -9,6 +9,7 @@ const mappings = {
   'node.storage-backend': 'STORAGE_BACKEND', 'node.data-dir': 'DATA_DIR', 'node.data-key': 'DATA_KEY',
   'node.database-layout': 'DATABASE_LAYOUT', 'node.database-schema': 'DATABASE_SCHEMA',
   'node.metadata-schema': 'NODE_DATABASE_SCHEMA', 'node.owner-user-id': 'OWNER_USER_ID',
+  'node.database-transport': 'DATABASE_TRANSPORT', 'node.supabase-url': 'SUPABASE_URL', 'node.supabase-key': 'SUPABASE_SECRET_KEY',
   'node.upstream-url': 'UPSTREAM_URL', 'node.cors-origins': 'CORS_ORIGINS',
   'node.allow-iframe': 'ALLOW_IFRAME', 'node.demo-auth': 'DEMO_AUTH',
   'node.limits.part-size': 'PART_SIZE', 'node.limits.max-file-size': 'MAX_FILE_SIZE',

@@ -36,6 +36,8 @@ Se lee automáticamente `config.toml`, o la ruta indicada por `CONFIG_FILE`. Se 
 
 Valida sobre una copia antes de sustituir el servicio. `node scripts/snapshot-db.mjs config.toml` crea una instantánea cifrada de las tablas en `var/backups`; complementa un respaldo PostgreSQL del proveedor, no sustituye `pg_dump`. Las copias en bases existentes usan mensajes nuevos de Telegram. Los enlaces y sesiones web emitidos por Go permanecen intactos; Node requiere iniciar sesión y crear sus propios enlaces. Las cargas pendientes de Go, ACL, favoritos y estados de visor anteriores todavía no se importan.
 
+Si el hosting no permite PostgreSQL saliente, [la conexión Supabase por HTTPS y RPC](docs/SUPABASE.md) usa el puerto 443 sobre el mismo catálogo v2, sin cambiar el TOML del otro Teldrive.
+
 ## Límites y migración de servidor
 
 En **Configuración → Límites del servidor** puedes cambiar tamaño de parte, máximo por archivo, concurrencia, caducidad de cargas, límites por IP y tamaño de JSON. Los cambios se guardan en la misma base y tienen prioridad sobre los valores iniciales del entorno/TOML. Las cargas existentes conservan su tamaño de parte y máximo. La configuración no elimina los límites que impongan Telegram, Cloudflare o el hosting.

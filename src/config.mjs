@@ -18,6 +18,7 @@ export function config(env = process.env) {
     key: Buffer.from(env.DATA_KEY || '', 'base64'), demo: env.DEMO_AUTH === 'true',
     apiId: Number(env.TELEGRAM_API_ID), apiHash: env.TELEGRAM_API_HASH,
     databaseUrl: env.DATABASE_URL, databaseLayout: env.DATABASE_LAYOUT || 'native',
+    databaseTransport: env.DATABASE_TRANSPORT || 'postgres', supabaseUrl: env.SUPABASE_URL, supabaseKey: env.SUPABASE_SECRET_KEY,
     databaseSchema: env.DATABASE_SCHEMA || 'teldrive', metadataSchema: env.NODE_DATABASE_SCHEMA || 'teldrive_node',
     databasePoolSize: integer('DATABASE_POOL_SIZE', 2, 1, 100),
     legacyEncryptionKey: env.LEGACY_ENCRYPTION_KEY,
@@ -45,12 +46,19 @@ export function config(env = process.env) {
     if (c.key.length !== 32) throw new Error('DATA_KEY must contain 32 random bytes encoded as base64');
     if (!['telegram', 'local'].includes(c.backend)) throw new Error('Invalid STORAGE_BACKEND');
     if (c.backend === 'telegram' && (!Number.isSafeInteger(c.apiId) || c.apiId < 1 || !/^[a-f0-9]{32}$/i.test(c.apiHash || ''))) throw new Error('Configure TELEGRAM_API_ID and TELEGRAM_API_HASH');
-    if (c.production && c.allowedUsers.length === 0 && !c.databaseUrl) throw new Error('Set ALLOWED_USERS before production deployment');
-    c.existingUsersOnly = c.production && !c.allowedUsers.length && !!c.databaseUrl;
+    if (c.production && c.allowedUsers.length === 0 && !c.databaseUrl && !c.supabaseUrl) throw new Error('Set ALLOWED_USERS before production deployment');
+    c.existingUsersOnly = c.production && !c.allowedUsers.length && !!(c.databaseUrl || c.supabaseUrl);
     if (c.demo && (c.production || c.backend !== 'local' || !['127.0.0.1', 'localhost', '::1'].includes(c.host))) throw new Error('Demo authentication requires non-production, local storage and loopback binding');
   }
   if (!['native', 'legacy', 'v2', 'auto'].includes(c.databaseLayout)) throw new Error('Invalid DATABASE_LAYOUT');
-  if (c.databaseLayout !== 'native' && (!c.databaseUrl || c.backend !== 'telegram')) throw new Error('Existing database requires DATABASE_URL and Telegram storage');
+  if (c.databaseLayout !== 'native' && ((!c.databaseUrl && !c.supabaseUrl) || c.backend !== 'telegram')) throw new Error('Existing database requires a database connection and Telegram storage');
+  if (!['postgres', 'supabase'].includes(c.databaseTransport)) throw new Error('Invalid DATABASE_TRANSPORT');
+  if (c.databaseTransport === 'supabase') {
+    if (c.databaseSchema !== 'teldrive' || c.metadataSchema !== 'teldrive_node' || c.backend !== 'telegram') throw new Error('Supabase RPC requires the teldrive v2 schema and Telegram storage');
+    const url = new URL(c.supabaseUrl || '');
+    if (url.protocol !== 'https:' || url.origin !== c.supabaseUrl || !c.supabaseKey) throw new Error('Configure SUPABASE_URL (HTTPS origin) and SUPABASE_SECRET_KEY');
+    c.databaseLayout = 'v2';
+  }
   if (c.production && c.databaseUrl?.startsWith('pglite:')) throw new Error('PGlite is only a test harness');
   for (const schema of [c.databaseSchema, c.metadataSchema]) if (!/^[a-z_][a-z0-9_]{0,62}$/.test(schema)) throw new Error('Invalid PostgreSQL schema name');
   if (c.databaseSchema === c.metadataSchema) throw new Error('Use a separate schema for Node-specific metadata');

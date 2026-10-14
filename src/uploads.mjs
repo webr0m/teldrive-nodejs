@@ -72,7 +72,7 @@ export class Uploads {
         if (fileHash.value !== u.expectedHash.value.toLowerCase()) fail(422, 'file_hash_mismatch');
       }
       return this.store.transaction(() => {
-        const file = this.catalog.create(userId, u, 'file', { size, mimeType: u.mimeType, encryption: u.encryption, encryptionKeyVersion: u.parts[0]?.encryptionKeyVersion, parts: u.parts, hash: fileHash });
+        const file = this.catalog.create(userId, u, 'file', { size, mimeType: u.mimeType, encryption: u.encryption, encryptionKeyVersion: u.parts[0]?.encryptionKeyVersion ?? (u.encryption ? this.config.databaseLayout === 'legacy' ? 1 : this.config.encryptionKeyVersion : undefined), parts: u.parts, hash: fileHash });
         u.state = 'completed'; u.fileId = file.id; u.completedAt = now(); this.store.put('uploads', u); return { status: 201, file };
       });
     });
@@ -129,7 +129,7 @@ export class Uploads {
       const byId = new Map(files.map(f => [f.id, f]));
       const depth = f => { let d = 0; const seen = new Set(); while (byId.has(f.parentId) && !seen.has(f.parentId)) { seen.add(f.parentId); f = byId.get(f.parentId); d++; } return d; };
       files.sort((a, b) => depth(b) - depth(a));
-      this.store.transaction(() => { for (const f of files) { this.queueCleanup(userId, f.parts || []); this.store.delete('files', f.id); for (const s of this.store.list('shares', userId).filter(s => s.fileId === f.id)) this.store.delete('shares', s.id); } });
+      this.store.transaction(() => { for (const f of files) { this.queueCleanup(userId, f.parts || []); this.store.delete('files', f.id, userId, f.generation); for (const s of this.store.list('shares', userId).filter(s => s.fileId === f.id)) this.store.delete('shares', s.id); } });
       await this.drainCleanup();
     });
   }

@@ -10,6 +10,8 @@ import { PostgresStore } from '../src/postgres.mjs';
 import { Catalog } from '../src/catalog.mjs';
 import { CryptoBox } from '../src/core.mjs';
 import { Uploads } from '../src/uploads.mjs';
+import { readFileSync } from 'node:fs';
+import { SupabaseStore } from '../src/supabase.mjs';
 
 test('original TOML names and precedence are accepted with Node extensions', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'td-toml-')), filename = path.join(directory, 'config.toml');
@@ -22,6 +24,9 @@ test('original TOML names and precedence are accepted with Node extensions', asy
 
 const v2Fixture = `
 CREATE SCHEMA teldrive;
+CREATE TYPE teldrive.file_kind AS ENUM('file','folder');
+CREATE TYPE teldrive.file_status AS ENUM('active','trashed','deletion_pending','spam');
+CREATE TYPE teldrive.user_role AS ENUM('owner','admin','user');
 CREATE TABLE teldrive.users(user_id bigint PRIMARY KEY,display_name text,username text,premium boolean NOT NULL DEFAULT false,role text NOT NULL,disabled_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE teldrive.channels(channel_id bigint NOT NULL,user_id bigint REFERENCES teldrive.users(user_id),name text NOT NULL,selected boolean NOT NULL,health text DEFAULT 'unknown',created_at timestamptz NOT NULL,updated_at timestamptz NOT NULL,PRIMARY KEY(user_id,channel_id));
 CREATE UNIQUE INDEX one_selected ON teldrive.channels(user_id) WHERE selected;
@@ -30,6 +35,28 @@ CREATE UNIQUE INDEX active_child_name ON teldrive.files(user_id,parent_id,name) 
 CREATE TABLE teldrive.file_parts(file_id uuid REFERENCES teldrive.files(id) ON DELETE CASCADE,part_no integer NOT NULL,channel_id bigint NOT NULL,message_id bigint NOT NULL,plain_size bigint,stored_size bigint,checksum text,salt text,PRIMARY KEY(file_id,part_no),UNIQUE(channel_id,message_id));
 INSERT INTO teldrive.users(user_id,display_name,username,role) VALUES(7,'Owner','owner','owner'),(8,'User','user','user');
 `;
+test('restricted Supabase RPC keeps v2 writes atomic, rejects stale generations and hides the RPC from browser roles', () => {
+  const database = new PostgresStore({ databaseUrl: 'pglite:test', databaseLayout: 'auto', databaseSchema: 'teldrive', metadataSchema: 'teldrive_node', testFixture: v2Fixture });
+  try {
+    database.query('CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;');
+    database.query(readFileSync(new URL('../db/supabase-rpc.sql', import.meta.url), 'utf8'));
+    const rpc = request => database.query('SELECT teldrive_node_api.catalog($1::jsonb) AS response', [JSON.stringify(request)])[0].response;
+    const store = new SupabaseStore({}, { rpc }), catalog = new Catalog(store);
+    const folder = catalog.create('7', { name: 'HTTPS folder' });
+    const file = catalog.create('7', { name: 'file.bin', parentId: folder.id }, 'file', { size: 10, encryption: true, encryptionKeyVersion: 2, parts: [{ backend: 'telegram', channelId: '99', messageId: 101, partNo: 1, plainSize: 10, size: 60, legacySalt: 'salt' }] });
+    assert.equal(catalog.get('7', file.id).parts[0].legacySalt, 'salt');
+    assert.throws(() => store.transaction(() => { catalog.update('7', file.id, { name: 'never.bin' }); catalog.create('7', { name: 'duplicate.bin', parentId: folder.id }, 'file', { size: 10, parts: [{ backend: 'telegram', channelId: '99', messageId: 101, partNo: 1 }] }); }));
+    assert.equal(catalog.get('7', file.id).name, 'file.bin');
+    const stale = catalog.get('7', file.id); catalog.update('7', file.id, { name: 'current.bin' });
+    stale.name = 'stale.bin'; stale.generation++; assert.throws(() => store.put('files', stale), { code: 'P0001' });
+    assert.equal(catalog.get('7', file.id).name, 'current.bin');
+    store.transaction(() => { catalog.update('7', file.id, { name: 'first.bin' }); catalog.update('7', file.id, { name: 'second.bin' }); });
+    assert.equal(catalog.get('7', file.id).name, 'second.bin');
+    const permissions = database.query("SELECT has_function_privilege('anon','teldrive_node_api.catalog(jsonb)','EXECUTE') AS anon,has_function_privilege('authenticated','teldrive_node_api.catalog(jsonb)','EXECUTE') AS authenticated,has_function_privilege('service_role','teldrive_node_api.catalog(jsonb)','EXECUTE') AS service")[0];
+    assert.deepEqual(permissions, { anon: false, authenticated: false, service: true });
+    assert.equal(database.query('SELECT name FROM teldrive.files WHERE id=$1', [file.id])[0].name, 'second.bin');
+  } finally { database.close(); }
+});
 test('v2 schema preserves roles, content keys, hashes and independent copy messages; cleanup survives failures', async () => {
   const c = { databaseUrl: 'pglite:test', databaseLayout: 'auto', databaseSchema: 'teldrive', metadataSchema: 'teldrive_node', encryptionKeyVersion: 2, concurrency: 2, testFixture: v2Fixture };
   const store = new PostgresStore(c);

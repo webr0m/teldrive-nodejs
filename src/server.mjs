@@ -14,6 +14,7 @@ import { Shares } from './shares.mjs';
 import { Settings } from './settings.mjs';
 import { gateway } from './gateway.mjs';
 import { PostgresStore } from './postgres.mjs';
+import { SupabaseStore } from './supabase.mjs';
 
 const publicDir = fileURLToPath(new URL('../public/', import.meta.url));
 export const routes = [];
@@ -213,7 +214,7 @@ export function createApp(config, overrides = {}) {
   const limits = new Map(), proxy = config.mode === 'gateway' ? gateway(config) : null;
   let context;
   if (!proxy) {
-    const store = overrides.store || (config.databaseUrl ? new PostgresStore(config) : new Store(config.dataDir)), catalog = new Catalog(store), telegram = overrides.telegram || new Telegram(store, config);
+    const store = overrides.store || (config.databaseTransport === 'supabase' ? new SupabaseStore(config) : config.databaseUrl ? new PostgresStore(config) : new Store(config.dataDir)), catalog = new Catalog(store), telegram = overrides.telegram || new Telegram(store, config);
     const auth = new Auth(store, config, telegram), storage = overrides.storage || new Storage(config, telegram), uploads = new Uploads(store, catalog, storage, config), shares = new Shares(store, catalog, config), settings = new Settings(store, config, uploads);
     context = { store, catalog, telegram, auth, storage, uploads, shares, settings, config };
   }

@@ -17,6 +17,7 @@ Referencia: [webr0m/teldrive, teldrive-v2-drive-es](https://github.com/webr0m/te
 | Enlaces nuevos de lectura con contraseña, caducidad y límite | Implementado y probado localmente |
 | TOML v1/v2 | Mapea los equivalentes implementados; entorno y extensiones node tienen prioridad |
 | PostgreSQL v1/v2, archivos, partes, usuarios y canales | Adaptación directa; conserva IDs, roles, hashes y claves de contenido |
+| Supabase por HTTPS 443 | RPC restringida y transacciones de escritura; probado con el catálogo real en lectura |
 | Cifrado TELDRIVE/secretbox/scrypt y versiones de claves | Integridad y lectura por rangos probadas; falta vector Go y archivo real |
 | Dashboard de almacenamiento | Uso actual, categorías, canales y actividad de subidas Node; sin reconstruir historial anterior |
 | Bots, rotación, trabajos River/importaciones y SSE | Pendiente de port nativo |
