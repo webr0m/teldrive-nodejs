@@ -4,6 +4,8 @@ import { existsSync } from 'node:fs';
 import { once } from 'node:events';
 import { fail, Semaphore } from './core.mjs';
 const require = createRequire(import.meta.url);
+// Uploaded playlists must not make FFmpeg open local files or arbitrary URLs.
+const inputOptions = ['-protocol_whitelist','http,https,tcp,tls,crypto','-format_whitelist','matroska,webm,mov,mp4,m4a,3gp,3g2,mj2,avi,mp3,aac,flac,ogg,wav,asf,mpeg,mpegts,flv','-tls_verify','1'];
 
 export function mediaTracks(data) {
   return (data.streams || []).filter(s => ['video','audio','subtitle'].includes(s.codec_type)).map(s => ({ index: s.index, kind: s.codec_type, codec: s.codec_name || 'unknown', language: s.tags?.language || 'und', title: s.tags?.title || '', default: !!s.disposition?.default, bitmap: ['dvd_subtitle','dvb_subtitle','hdmv_pgs_subtitle','xsub'].includes(s.codec_name) }));
@@ -22,7 +24,7 @@ export class Media {
     const cached = this.cache.get(key); if (cached) return { available: true, tracks: cached };
     this.transfers.max = this.config.mediaConcurrency ?? 1;
     return this.transfers.run(async () => {
-      const stdout = await this.collect(this.ffprobe, ['-v','error','-rw_timeout','30000000','-probesize',String(this.config.mediaProbeBytes ?? 8388608),'-analyzeduration','5000000','-show_streams','-of','json',this.source(ticket)], this.config.mediaProbeTimeoutSeconds ?? 60);
+      const stdout = await this.collect(this.ffprobe, ['-v','error',...inputOptions,'-rw_timeout','30000000','-probesize',String(this.config.mediaProbeBytes ?? 8388608),'-analyzeduration','5000000','-show_streams','-of','json',this.source(ticket)], this.config.mediaProbeTimeoutSeconds ?? 60);
       let tracks; try { tracks = mediaTracks(JSON.parse(stdout)); } catch { fail(503,'media_probe_failed'); }
       if (this.cache.size >= 200) this.cache.delete(this.cache.keys().next().value);
       this.cache.set(key, tracks); return { available: true, tracks };
@@ -58,7 +60,7 @@ export class Media {
     this.playback.consume(secret);
     this.transfers.max = this.config.mediaConcurrency ?? 1;
     return this.transfers.run(async () => {
-      const args = ['-hide_banner','-loglevel','error','-nostdin','-threads',String(this.config.mediaThreads ?? 1),'-rw_timeout','30000000',...(start ? ['-ss',String(start)] : []),'-i',this.source(secret)];
+      const args = ['-hide_banner','-loglevel','error','-nostdin','-threads',String(this.config.mediaThreads ?? 1),...inputOptions,'-rw_timeout','30000000',...(start ? ['-ss',String(start)] : []),'-i',this.source(secret)];
       if (mode === 'audio') args.push('-map',audio===undefined?'0:a:0?':`0:${audio}`,'-vn','-c:a','libmp3lame','-b:a','192k','-f','mp3');
       else args.push('-map',video===undefined?'0:v:0?':`0:${video}`,'-map',audio===undefined?'0:a:0?':`0:${audio}`,'-sn','-c:v','libx264','-preset','ultrafast','-crf','23','-pix_fmt','yuv420p','-vf',`scale=w=trunc(min(iw\\,${this.config.mediaMaxWidth ?? 1920})/2)*2:h=-2`,'-c:a','aac','-ac','2','-b:a','192k','-movflags','frag_keyframe+empty_moov+default_base_moof','-f','mp4');
       await this.pipe(c, [...args,'-threads',String(this.config.mediaThreads ?? 1),'pipe:1'], mode === 'audio' ? 'audio/mpeg' : 'video/mp4');
@@ -69,7 +71,7 @@ export class Media {
     if (track === undefined || tracks.find(t=>t.index===track)?.bitmap || !Number.isFinite(start) || start < 0 || start > 86400) fail(422,'invalid_subtitle_track');
     if (!this.available()) fail(503,'media_conversion_unavailable');
     this.playback.consume(secret);
-    return this.transfers.run(()=>this.pipe(c,['-hide_banner','-loglevel','error','-nostdin','-rw_timeout','30000000',...(start ? ['-ss',String(start)] : []),'-i',this.source(secret),'-map',`0:${track}`,'-vn','-an','-c:s','webvtt','-f','webvtt','pipe:1'],'text/vtt; charset=utf-8',60));
+    return this.transfers.run(()=>this.pipe(c,['-hide_banner','-loglevel','error','-nostdin',...inputOptions,'-rw_timeout','30000000',...(start ? ['-ss',String(start)] : []),'-i',this.source(secret),'-map',`0:${track}`,'-vn','-an','-c:s','webvtt','-f','webvtt','pipe:1'],'text/vtt; charset=utf-8',60));
   }
   async pipe(c, args, mime, timeout = this.config.mediaTimeoutSeconds ?? 7200) {
     const child = this.spawn(this.ffmpeg,args,{ windowsHide:true,stdio:['ignore','pipe','pipe'] }); child.stderr.resume();
