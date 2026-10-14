@@ -31,6 +31,13 @@ test('bot rotation isolates owners and operations, respects disabled bots and re
   assert.deepEqual(t.botSummary(store.get('bots','1')), { id: 1, username: undefined, enabled: true, createdAt: store.get('bots','1').createdAt });
   t.config.downloadBots = 0; assert.deepEqual(t.eligibleBots('8','download'), []);
 });
+
+test('choosing download bots does not issue one HTTPS database request per bot', () => {
+  const {store,telegram:t}=fixture(); let reads=0;
+  const get=store.get.bind(store);store.get=(...args)=>{reads++;return get(...args)};
+  for(let n=4;n<104;n++)store.put('bots',{id:String(n),ownerId:'7',enabled:true});
+  assert.equal(t.eligibleBots('7','download').length,2);assert.equal(reads,0);
+});
 test('channel resolution works for bots without GetDialogs', async () => {
   const { telegram: t } = fixture(); let called;
   const channel = new Api.Channel({ id: 99, accessHash: 123, title: 'Storage', date: 0 });

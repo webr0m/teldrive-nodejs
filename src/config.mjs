@@ -24,6 +24,8 @@ export function config(env = process.env) {
     mediaEnabled: env.MEDIA_ENABLED !== 'false', ffmpegPath: env.FFMPEG_PATH, ffprobePath: env.FFPROBE_PATH,
     mediaCaFile: env.MEDIA_CA_FILE,
     mediaConcurrency: integer('MEDIA_CONCURRENCY', 1, 1, 64), mediaThreads: integer('MEDIA_THREADS', 1, 1, 64),
+    mediaCopyVideo: integer('MEDIA_COPY_VIDEO', 1, 0, 1),
+    mediaAnalyzeSeconds: integer('MEDIA_ANALYZE_SECONDS', 1, 1, 60),
     mediaMaxWidth: integer('MEDIA_MAX_WIDTH', 1280, 128, 7680), mediaTimeoutSeconds: integer('MEDIA_TIMEOUT_SECONDS', 7200, 10, 86400),
     mediaProbeTimeoutSeconds: integer('MEDIA_PROBE_TIMEOUT_SECONDS', 60, 5, 600), mediaProbeBytes: integer('MEDIA_PROBE_BYTES', 8388608, 32768, 134217728),
     databaseUrl: env.DATABASE_URL, databaseLayout: env.DATABASE_LAYOUT || 'native',

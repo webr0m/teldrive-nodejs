@@ -38,7 +38,8 @@ export class Telegram {
   botStateId(bot) { return hash(`${this.config.telegramInstanceId || `${hostname()}:${process.pid}`}:${bot.id}`); }
   eligibleBots(userId, operation) {
     if (operation === 'download' && this.config.downloadBots === 0) return [];
-    let bots = this.store.list('bots', userId).filter(b => b.enabled && !(Date.parse(this.store.get('bot-state', this.botStateId(b))?.retryAfter || '') > Date.now()));
+    const states = new Map(this.store.list('bot-state', userId).map(state => [state.id, state]));
+    let bots = this.store.list('bots', userId).filter(b => b.enabled && !(Date.parse(states.get(this.botStateId(b))?.retryAfter || '') > Date.now()));
     if (operation === 'download') bots = bots.slice(0, this.config.downloadBots ?? 20);
     if (!bots.length) return [];
     const key = `${userId}:${operation}`, index = this.rotation.get(key) || 0; this.rotation.set(key, (index + 1) % bots.length);

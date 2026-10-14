@@ -8,6 +8,8 @@ export const limitDefinitions = {
   playbackTtlMinutes: { label: 'Duración del permiso de reproducción (minutos)', min: 5, max: 1440, env: 'PLAYBACK_TTL_MINUTES' },
   mediaConcurrency: { label: 'Procesos multimedia simultáneos', min: 1, max: 64, env: 'MEDIA_CONCURRENCY' },
   mediaThreads: { label: 'Hilos por conversión multimedia', min: 1, max: 64, env: 'MEDIA_THREADS' },
+  mediaCopyVideo: { label: 'Conservar vídeo H.264 compatible sin recodificar (0/1)', min: 0, max: 1, env: 'MEDIA_COPY_VIDEO' },
+  mediaAnalyzeSeconds: { label: 'Duración de análisis multimedia (segundos)', min: 1, max: 60, env: 'MEDIA_ANALYZE_SECONDS' },
   mediaMaxWidth: { label: 'Ancho máximo del vídeo convertido (píxeles)', min: 128, max: 7680, env: 'MEDIA_MAX_WIDTH' },
   mediaTimeoutSeconds: { label: 'Duración máxima de conversión (segundos)', min: 10, max: 86400, env: 'MEDIA_TIMEOUT_SECONDS' },
   mediaProbeTimeoutSeconds: { label: 'Espera para detectar pistas (segundos)', min: 5, max: 600, env: 'MEDIA_PROBE_TIMEOUT_SECONDS' },

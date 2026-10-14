@@ -29,6 +29,7 @@ const mappings = {
   'media.enabled': 'MEDIA_ENABLED', 'media.ffmpeg-path': 'FFMPEG_PATH', 'media.ffprobe-path': 'FFPROBE_PATH', 'media.max-concurrent': 'MEDIA_CONCURRENCY',
   'media.ca-file': 'MEDIA_CA_FILE',
   'node.limits.media-concurrency': 'MEDIA_CONCURRENCY', 'node.limits.media-threads': 'MEDIA_THREADS', 'node.limits.media-max-width': 'MEDIA_MAX_WIDTH',
+  'node.limits.media-copy-video': 'MEDIA_COPY_VIDEO', 'node.limits.media-analyze-seconds': 'MEDIA_ANALYZE_SECONDS',
   'node.limits.media-timeout-seconds': 'MEDIA_TIMEOUT_SECONDS', 'node.limits.media-probe-timeout-seconds': 'MEDIA_PROBE_TIMEOUT_SECONDS', 'node.limits.media-probe-bytes': 'MEDIA_PROBE_BYTES',
   'security.data-key': 'DATA_KEY', 'security.allowed-users': 'ALLOWED_USERS',
 };
