@@ -22,6 +22,8 @@ const mappings = {
   'database.url': 'DATABASE_URL', 'database.schema': 'DATABASE_SCHEMA',
   'database.max-connections': 'DATABASE_POOL_SIZE',
   'telegram.app-id': 'TELEGRAM_API_ID', 'telegram.app-hash': 'TELEGRAM_API_HASH',
+  'telegram.download-bots': 'DOWNLOAD_BOTS', 'tg.stream.bots': 'DOWNLOAD_BOTS',
+  'node.limits.download-bots': 'DOWNLOAD_BOTS', 'node.limits.bot-attempts': 'BOT_ATTEMPTS', 'node.limits.bot-retry-seconds': 'BOT_RETRY_SECONDS',
   'security.data-key': 'DATA_KEY', 'security.allowed-users': 'ALLOWED_USERS',
 };
 export function tomlEnvironment(filename, env) {

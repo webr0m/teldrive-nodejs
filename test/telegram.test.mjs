@@ -1,0 +1,53 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { Telegram } from '../src/telegram.mjs';
+import { SecureBlob } from '../src/secureblob.mjs';
+const { Api } = createRequire(import.meta.url)('teleproto');
+function fixture() {
+  const records = new Map();
+  const store = { get: (b, id) => records.get(`${b}:${id}`), put: (b, v) => records.set(`${b}:${v.id}`, v), list: (b, owner) => [...records.entries()].filter(([k,v]) => k.startsWith(`${b}:`) && (owner === undefined || v.ownerId === owner)).map(([,v]) => v) };
+  const telegram = new Telegram(store, { key: randomBytes(32), downloadBots: 20, botAttempts: 2, botRetrySeconds: 60 });
+  for (const [id,ownerId] of [['1','7'],['2','7'],['3','8']]) store.put('bots', { id, ownerId, enabled: true, tokenCiphertext: 'private', createdAt: new Date().toISOString() });
+  return { store, telegram };
+}
+test('Teldrive secureblob authenticates its version, purpose and ciphertext', () => {
+  const box = new SecureBlob(randomBytes(32)), sealed = box.seal('session', 'bot-session');
+  assert.equal(sealed[0], 1); assert.equal(sealed.length, 48); assert.equal(box.open(sealed.toString('hex'), 'bot-session').toString(), 'session');
+  assert.throws(() => box.open(sealed, 'bot-token'));
+  const tampered = Buffer.from(sealed); tampered[30] ^= 1; assert.throws(() => box.open(tampered, 'bot-session'));
+  tampered[0] = 2; assert.throws(() => box.open(tampered, 'bot-session'));
+});
+test('bot rotation isolates owners and operations, respects disabled bots and retries, and falls back to the account', async () => {
+  const { store, telegram: t } = fixture();
+  assert.deepEqual(t.eligibleBots('7', 'download').map(b=>b.id), ['1','2']);
+  assert.deepEqual(t.eligibleBots('7', 'download').map(b=>b.id), ['2','1']);
+  assert.deepEqual(t.eligibleBots('7', 'upload').map(b=>b.id), ['1','2']);
+  assert.deepEqual(t.eligibleBots('8', 'download').map(b=>b.id), ['3']);
+  const attempts = []; t.withBot = async bot => { attempts.push(bot.id); throw new Error('offline'); }; t.withClient = async (owner, fn) => { attempts.push(`user:${owner}`); return fn('account'); };
+  assert.equal(await t.withTransfer('7','download',client=>client), 'account'); assert.equal(attempts.length,3);
+  assert.deepEqual(t.eligibleBots('7','download'), []); assert.equal(store.get('bots','1').enabled,true,'a Node failure cannot disable a bot in Go');
+  assert.deepEqual(t.botSummary(store.get('bots','1')), { id: 1, username: undefined, enabled: true, createdAt: store.get('bots','1').createdAt });
+  t.config.downloadBots = 0; assert.deepEqual(t.eligibleBots('8','download'), []);
+});
+test('channel resolution works for bots without GetDialogs', async () => {
+  const { telegram: t } = fixture(); let called;
+  const channel = new Api.Channel({ id: 99, accessHash: 123, title: 'Storage', date: 0 });
+  const entity = await t.entity({ invoke: async request => { called=request; return { chats: [channel] }; } }, '99');
+  assert.ok(called instanceof Api.channels.GetChannels); assert.equal(String(called.id[0].channelId), '99'); assert.equal(String(called.id[0].accessHash), '0'); assert.equal(entity, channel);
+});
+test('unaligned range resumes after partial bot failure without duplicating bytes', async () => {
+  const { telegram: t } = fixture(), data = randomBytes(2 * 512 * 1024 + 100), chunks = [], calls = [];
+  const client = (broken) => ({ async *iterDownload(_message, params) {
+    calls.push(params.offset); assert.equal(params.offset % (512*1024),0);
+    yield data.subarray(params.offset, params.offset+512*1024);
+    if (broken) throw new Error('connection lost');
+    yield data.subarray(params.offset+512*1024);
+  } });
+  t.message = async () => ({ message: {} }); let first = true;
+  t.withBot = async (_bot, fn) => { const broken = first; first=false; return fn(client(broken)); };
+  t.withClient = async (_owner, fn) => fn(client(false));
+  await t.read('7', {}, 123, 800000, bytes => { chunks.push(bytes); });
+  assert.deepEqual(Buffer.concat(chunks), data.subarray(123,800123)); assert.deepEqual(calls, [0,512*1024]);
+});

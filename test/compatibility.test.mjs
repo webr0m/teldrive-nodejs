@@ -12,6 +12,7 @@ import { CryptoBox } from '../src/core.mjs';
 import { Uploads } from '../src/uploads.mjs';
 import { readFileSync } from 'node:fs';
 import { SupabaseStore } from '../src/supabase.mjs';
+import { Auth } from '../src/auth.mjs';
 
 test('original TOML names and precedence are accepted with Node extensions', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'td-toml-')), filename = path.join(directory, 'config.toml');
@@ -29,6 +30,7 @@ CREATE TYPE teldrive.file_status AS ENUM('active','trashed','deletion_pending','
 CREATE TYPE teldrive.user_role AS ENUM('owner','admin','user');
 CREATE TABLE teldrive.users(user_id bigint PRIMARY KEY,display_name text,username text,premium boolean NOT NULL DEFAULT false,role text NOT NULL,disabled_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE teldrive.channels(channel_id bigint NOT NULL,user_id bigint REFERENCES teldrive.users(user_id),name text NOT NULL,selected boolean NOT NULL,health text DEFAULT 'unknown',created_at timestamptz NOT NULL,updated_at timestamptz NOT NULL,PRIMARY KEY(user_id,channel_id));
+CREATE TABLE teldrive.bots(bot_id bigint PRIMARY KEY,user_id bigint REFERENCES teldrive.users(user_id),username text,token_ciphertext bytea NOT NULL,enabled boolean NOT NULL,session bytea,created_at timestamptz NOT NULL,updated_at timestamptz NOT NULL);
 CREATE UNIQUE INDEX one_selected ON teldrive.channels(user_id) WHERE selected;
 CREATE TABLE teldrive.files(id uuid PRIMARY KEY,user_id bigint REFERENCES teldrive.users(user_id),parent_id uuid,name text NOT NULL,kind text NOT NULL,mime_type text,size bigint,hash_algorithm text,hash_value text,encryption boolean NOT NULL,encryption_key_version integer,status text NOT NULL,mod_time timestamptz NOT NULL,generation bigint NOT NULL,created_at timestamptz NOT NULL,updated_at timestamptz NOT NULL,deleted_at timestamptz,UNIQUE(id,user_id),FOREIGN KEY(parent_id,user_id) REFERENCES teldrive.files(id,user_id) ON DELETE RESTRICT,CHECK((NOT encryption AND encryption_key_version IS NULL) OR (encryption AND encryption_key_version IS NOT NULL)),CHECK((status='active' AND deleted_at IS NULL) OR (status<>'active' AND deleted_at IS NOT NULL)),CHECK((kind='folder' AND size IS NULL) OR (kind='file' AND size>=0)));
 CREATE UNIQUE INDEX active_child_name ON teldrive.files(user_id,parent_id,name) WHERE status='active';
@@ -47,6 +49,20 @@ test('restricted Supabase RPC keeps v2 writes atomic, rejects stale generations 
     assert.equal(store.get('settings', 'limits').values.concurrency, 3);
     assert.equal(store.list('settings').length, 1);
     store.delete('settings', 'limits'); assert.equal(store.get('settings', 'limits'), undefined);
+    const bot = { id: '12345', ownerId: '7', username: 'fixture_bot', tokenCiphertext: '010203', enabled: true, createdAt: new Date().toISOString() };
+    store.put('bots', bot);
+    assert.equal(store.list('bots', '7')[0].tokenCiphertext, '010203'); assert.equal(store.list('bots', '8').length, 0);
+    assert.throws(() => store.put('bots', { ...bot, ownerId: '8' }));
+    store.delete('bots', bot.id, '8'); assert.equal(store.list('bots', '7').length, 1);
+    store.delete('bots', bot.id, '7'); assert.equal(store.list('bots', '7').length, 0);
+    const auth = new Auth(store, { key: randomBytes(32), allowedUsers: [], production: false }, {});
+    const pair = auth.finish({ id: 7, firstName: 'Existing owner' });
+    auth.publish(pair, {}, false);
+    assert.equal(auth.authenticate({ headers: { authorization: `Bearer ${pair.accessToken}` } }, new URLSearchParams()).user.role, 'owner');
+    const renewed = auth.refresh(pair.refreshToken); auth.publish(renewed, {}, false);
+    assert.throws(() => auth.refresh(pair.refreshToken));
+    auth.revoke(renewed._session);
+    assert.throws(() => auth.authenticate({ headers: { authorization: `Bearer ${renewed.accessToken}` } }, new URLSearchParams()));
     const folder = catalog.create('7', { name: 'HTTPS folder' });
     const file = catalog.create('7', { name: 'file.bin', parentId: folder.id }, 'file', { size: 10, encryption: true, encryptionKeyVersion: 2, parts: [{ backend: 'telegram', channelId: '99', messageId: 101, partNo: 1, plainSize: 10, size: 60, legacySalt: 'salt' }] });
     assert.equal(catalog.get('7', file.id).parts[0].legacySalt, 'salt');

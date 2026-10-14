@@ -15,6 +15,7 @@ import { Settings } from './settings.mjs';
 import { gateway } from './gateway.mjs';
 import { PostgresStore } from './postgres.mjs';
 import { SupabaseStore } from './supabase.mjs';
+import packageInfo from '../package.json' with { type: 'json' };
 
 const publicDir = fileURLToPath(new URL('../public/', import.meta.url));
 export const routes = [];
@@ -30,8 +31,8 @@ const validateIds = body => { if (!Array.isArray(body.fileIds) || !body.fileIds.
 const metadata = (c, file, status = 200) => result(c.catalog.public(file), status, { ETag: c.catalog.etag(file), ...(status === 201 ? { Location: `/api/v1/files/${file.id}` } : {}) });
 const publicShare = c => c.shares.resolve(c.params.shareToken, c.req.headers['x-share-password'], cookies(c.req).td_share_session);
 
-route('GET', '/api/health/live', () => result({ status: 'ok', version: 'node-0.1.0' }), { public: true });
-route('GET', '/api/health/ready', c => { c.store.ready(); return result({ status: 'ok', version: 'node-0.1.0' }); }, { public: true });
+route('GET', '/api/health/live', () => result({ status: 'ok', version: `node-${packageInfo.version}` }), { public: true });
+route('GET', '/api/health/ready', c => { c.store.ready(); return result({ status: 'ok', version: `node-${packageInfo.version}` }); }, { public: true });
 route('GET', '/api/config', c => result({ mode: 'native', storage: c.config.backend, demo: c.config.demo, partSize: c.config.partSize, maxFileSize: c.config.maxFileSize }), { public: true });
 route('POST', '/api/dev/login', c => { if (!c.config.demo) fail(404, 'not_found'); return result(c.auth.publish(c.auth.finish({ id: 1, firstName: 'Demo local' }), c.res, true)); }, { public: true });
 route('POST', '/api/v1/auth/telegram/start', async c => { if (c.config.backend !== 'telegram') fail(503, 'telegram_not_configured'); return result(await c.telegram.start(c.body.phoneNumber), 201); }, { public: true });
@@ -113,6 +114,12 @@ route('GET', '/api/v1/uploads/:uploadId/parts', c => { const u = c.uploads.get(c
 route('PUT', '/api/v1/uploads/:uploadId/parts/:partNo', async c => { const r = await c.uploads.putPart(c.user.id, c.params.uploadId, Number(c.params.partNo), c.req); return result(r.part, r.status); }, { raw: true });
 route('POST', '/api/v1/uploads/:uploadId/complete', async c => { const r = await c.uploads.complete(c.user.id, c.params.uploadId); return metadata(c, r.file, r.status); });
 route('DELETE', '/api/v1/uploads/:uploadId', async c => { await c.uploads.abort(c.user.id, c.params.uploadId); return empty(); });
+route('GET', '/api/v1/bots', c => result(page(c.store.list('bots', c.user.id).map(bot => c.telegram.botSummary(bot)), c.query)));
+route('POST', '/api/v1/bots', async c => { if (c.config.backend !== 'telegram') fail(503, 'telegram_not_configured'); return result(await c.telegram.addBots(c.user.id, c.body.tokens)); });
+route('DELETE', '/api/v1/bots/:botId', c => {
+  const bot = c.store.get('bots', c.params.botId); if (!bot || bot.ownerId !== c.user.id) fail(404, 'bot_not_found');
+  c.store.transaction(() => { c.store.delete('bots', bot.id, c.user.id); c.store.delete('bot-state', bot.id); }); return empty();
+});
 route('GET', '/api/v1/channels', c => result(page(c.store.list('channels', c.user.id).map(({ ownerId, ...channel }) => ({ ...channel, id: Number(channel.id) })), c.query)));
 route('GET', '/api/v1/channels/discover', async c => { if (c.config.backend !== 'telegram') fail(503, 'telegram_not_configured'); return result((await c.telegram.discover(c.user.id)).map(ch => ({ ...ch, id: Number(ch.id) }))); });
 route('POST', '/api/v1/channels', async c => {
@@ -272,7 +279,7 @@ export function createApp(config, overrides = {}) {
       }
       const mime = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.wasm': 'application/wasm', '.woff2': 'font/woff2', '.woff': 'font/woff', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
       res.setHeader('Content-Type', mime[path.extname(filename)] || 'application/octet-stream');
-      res.setHeader('Content-Security-Policy', `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; img-src 'self' blob: data:; media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self'; base-uri 'none'; form-action 'self'; ${config.allowIframe ? '' : "frame-ancestors 'self';"}`);
+      res.setHeader('Content-Security-Policy', `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; img-src 'self' blob: data:; media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self'; base-uri 'none'; form-action 'self'; ${config.allowIframe ? '' : "frame-ancestors 'self';"}`);
       const bytes = await readFile(filename); res.setHeader('Content-Length', bytes.length); res.end(req.method === 'HEAD' ? undefined : bytes);
     } catch (error) {
       if (res.headersSent) { res.destroy(); return; }

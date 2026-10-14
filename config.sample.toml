@@ -34,3 +34,6 @@ upload-ttl-hours = 168
 rate-limit-per-minute = 300
 login-rate-per-minute = 10
 json-max-bytes = 1048576
+download-bots = 20
+bot-attempts = 2
+bot-retry-seconds = 60

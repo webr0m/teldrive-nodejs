@@ -17,6 +17,8 @@ export function config(env = process.env) {
     staticDir: path.resolve(env.STATIC_DIR || './ui/dist'),
     key: Buffer.from(env.DATA_KEY || '', 'base64'), demo: env.DEMO_AUTH === 'true',
     apiId: Number(env.TELEGRAM_API_ID), apiHash: env.TELEGRAM_API_HASH,
+    downloadBots: integer('DOWNLOAD_BOTS', 20, 0, 200), botAttempts: integer('BOT_ATTEMPTS', 2, 1, 20),
+    botRetrySeconds: integer('BOT_RETRY_SECONDS', 60, 1, 86400),
     databaseUrl: env.DATABASE_URL, databaseLayout: env.DATABASE_LAYOUT || 'native',
     databaseTransport: env.DATABASE_TRANSPORT || 'postgres', supabaseUrl: env.SUPABASE_URL, supabaseKey: env.SUPABASE_SECRET_KEY,
     databaseSchema: env.DATABASE_SCHEMA || 'teldrive', metadataSchema: env.NODE_DATABASE_SCHEMA || 'teldrive_node',

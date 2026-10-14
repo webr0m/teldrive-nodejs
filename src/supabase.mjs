@@ -27,6 +27,7 @@ export class SupabaseStore {
   v2() { return true; }
   ready() { const result = this.rpc({ action: 'ready' }); if (result.layout !== 'v2') fail(503, 'supabase_schema_not_ready'); }
   map(bucket, row) {
+    if (bucket === 'bots') return PostgresStore.prototype.bot.call(this, row);
     if (bucket === 'files') { const file = PostgresStore.prototype.file.call(this, row); file[revision] = { id: file.id, generation: file.generation }; return file; }
     if (bucket === 'users') return PostgresStore.prototype.user.call(this, row);
     if (bucket === 'channels') return { id: String(row.channel_id), ownerId: String(row.user_id), name: row.name, selected: row.selected, health: row.health, createdAt: new Date(row.created_at).toISOString() };

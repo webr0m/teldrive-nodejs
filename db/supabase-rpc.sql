@@ -21,7 +21,7 @@ DECLARE
   wanted text := request->>'id'; owner_id text := request->>'owner';
   items jsonb; op jsonb; value jsonb; part jsonb; record_key text;
   old_generation bigint; old_owner bigint; changed integer; is_new boolean;
-  allowed constant text[] := ARRAY['files','users','channels','sessions','session-index','keys','flows','uploads','shares','share-sessions','views','settings','tickets','idempotency','idempotency-pending','cleanup'];
+  allowed constant text[] := ARRAY['files','users','channels','bots','bot-state','sessions','session-index','keys','flows','uploads','shares','share-sessions','views','settings','tickets','idempotency','idempotency-pending','cleanup'];
 BEGIN
   IF action='ready' THEN
     IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='teldrive' AND table_name='files' AND column_name='kind')
@@ -43,6 +43,9 @@ BEGIN
       SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.to_jsonb(u) || pg_catalog.jsonb_build_object('node_meta',n.body)),'[]'::jsonb) INTO items
       FROM teldrive.users u LEFT JOIN teldrive_node.records n ON n.bucket='users' AND n.id=u.user_id::text
       WHERE action<>'get' OR u.user_id::text=wanted;
+    ELSIF bucket='bots' THEN
+      SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.to_jsonb(b)),'[]'::jsonb) INTO items FROM teldrive.bots b
+      WHERE (action<>'get' OR b.bot_id::text=wanted) AND (owner_id IS NULL OR b.user_id::text=owner_id);
     ELSIF bucket='channels' THEN
       SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.to_jsonb(c)),'[]'::jsonb) INTO items FROM teldrive.channels c
       WHERE (action<>'get' OR c.channel_id::text=wanted) AND (owner_id IS NULL OR c.user_id::text=owner_id);
@@ -62,6 +65,9 @@ BEGIN
         DELETE FROM teldrive.files WHERE id::text=wanted AND user_id::text=owner_id AND generation=(op->>'expectedGeneration')::bigint;
         GET DIAGNOSTICS changed=ROW_COUNT;
         IF changed<>1 THEN RAISE EXCEPTION 'generation_changed'; END IF;
+      ELSIF bucket='bots' THEN
+        IF owner_id IS NULL THEN RAISE EXCEPTION 'owner_required'; END IF;
+        DELETE FROM teldrive.bots WHERE bot_id::text=wanted AND user_id::text=owner_id;
       ELSIF bucket='channels' THEN
         IF owner_id IS NULL THEN RAISE EXCEPTION 'owner_required'; END IF;
         DELETE FROM teldrive.channels WHERE channel_id::text=wanted AND user_id::text=owner_id;
@@ -92,6 +98,12 @@ BEGIN
         INSERT INTO teldrive.users(user_id,display_name,username,premium,role,disabled_at,created_at,updated_at)
         VALUES(wanted::bigint,value->>'displayName',value->>'username',(value->>'premium')::boolean,(value->>'role')::teldrive.user_role,CASE WHEN (value->>'disabled')::boolean THEN pg_catalog.now() ELSE NULL END,(value->>'createdAt')::timestamptz,(value->>'updatedAt')::timestamptz)
         ON CONFLICT(user_id) DO UPDATE SET display_name=excluded.display_name,username=excluded.username,premium=excluded.premium,role=excluded.role,disabled_at=excluded.disabled_at,updated_at=excluded.updated_at;
+      ELSIF bucket='bots' THEN
+        INSERT INTO teldrive.bots AS b(bot_id,user_id,username,token_ciphertext,enabled,created_at,updated_at)
+        VALUES(wanted::bigint,owner_id::bigint,value->>'username',pg_catalog.decode(value->>'tokenCiphertext','hex'),(value->>'enabled')::boolean,(value->>'createdAt')::timestamptz,pg_catalog.now())
+        ON CONFLICT(bot_id) DO UPDATE SET username=excluded.username,token_ciphertext=excluded.token_ciphertext,enabled=excluded.enabled,updated_at=excluded.updated_at WHERE b.user_id=excluded.user_id;
+        GET DIAGNOSTICS changed=ROW_COUNT;
+        IF changed<>1 THEN RAISE EXCEPTION 'bot_already_registered'; END IF;
       ELSIF bucket='channels' THEN
         INSERT INTO teldrive.channels(channel_id,user_id,name,selected,created_at,updated_at)
         VALUES(wanted::bigint,owner_id::bigint,value->>'name',(value->>'selected')::boolean,(value->>'createdAt')::timestamptz,pg_catalog.now())

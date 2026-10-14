@@ -2,6 +2,9 @@ import { number, fail, now } from './core.mjs';
 
 // Infrastructure-independent limits, persisted separately from credentials.
 export const limitDefinitions = {
+  downloadBots: { label: 'Bots disponibles para descargas (0 usa la cuenta)', min: 0, max: 200, env: 'DOWNLOAD_BOTS' },
+  botAttempts: { label: 'Intentos con bots antes de usar la cuenta', min: 1, max: 20, env: 'BOT_ATTEMPTS' },
+  botRetrySeconds: { label: 'Espera tras un fallo de bot (segundos)', min: 1, max: 86400, env: 'BOT_RETRY_SECONDS' },
   partSize: { label: 'Tamaño de parte (bytes)', min: 1048576, max: 536870912, env: 'PART_SIZE' },
   maxFileSize: { label: 'Tamaño máximo de archivo (bytes)', min: 0, max: Number.MAX_SAFE_INTEGER, env: 'MAX_FILE_SIZE' },
   concurrency: { label: 'Transferencias simultáneas', min: 1, max: 64, env: 'MAX_CONCURRENT_TRANSFERS' },

@@ -52,6 +52,10 @@ export class PostgresStore {
     return { ...extra, id: row.id, ownerId: String(row.user_id), parentId: row.parent_id === root ? undefined : row.parent_id || undefined, name: row.name, kind: row.type, mimeType: row.mime_type, size: row.type === 'file' ? Number(row.size || 0) : undefined, status: row.status === 'pending_deletion' ? 'deletion_pending' : row.status, encryption: row.encrypted, generation: Date.parse(row.updated_at), createdAt: new Date(row.created_at).toISOString(), updatedAt: new Date(row.updated_at).toISOString(), modTime: extra.modTime || new Date(row.updated_at).toISOString(), parts: same ? extra.parts : legacyParts.map((p, index) => ({ backend: 'telegram', legacy: true, channelId: String(row.channel_id), messageId: Number(p.id), legacySalt: p.salt, partNo: index + 1, encryption: row.encrypted })), _legacyRoot: row.id === root };
   }
   user(row) { return { ...row.node_meta, id: String(row.user_id), userId: String(row.user_id), displayName: this.v2() ? row.display_name : row.name, username: this.v2() ? row.username : row.user_name, premium: this.v2() ? row.premium : row.is_premium, disabled: this.v2() ? !!row.disabled_at : !!row.node_meta?.disabled, role: this.v2() ? row.role : row.node_meta?.role || (String(row.user_id) === this.config.ownerUserId ? 'owner' : 'user'), createdAt: new Date(row.created_at).toISOString(), updatedAt: new Date(row.updated_at).toISOString() }; }
+  bot(row) {
+    const hex = value => !value ? undefined : typeof value === 'string' ? value.replace(/^\\x/, '') : Buffer.from(value.data || value).toString('hex');
+    return { id: String(row.bot_id), ownerId: String(row.user_id), username: row.username, enabled: row.enabled, tokenCiphertext: hex(row.token_ciphertext), sessionCiphertext: hex(row.session), createdAt: new Date(row.created_at).toISOString() };
+  }
   selectFiles(where = '', values = []) {
     const parts = this.v2() ? `,COALESCE((SELECT jsonb_agg(to_jsonb(p) ORDER BY p.part_no) FROM ${this.schema}.file_parts p WHERE p.file_id=f.id),'[]'::jsonb) AS stored_parts` : '';
     const rows = this.query(`SELECT f.*,n.body AS node_meta${parts} FROM ${this.schema}.files f LEFT JOIN ${this.metadata}.records n ON n.bucket='files' AND n.id=f.id::text ${where} ORDER BY f.id`, values);
@@ -59,17 +63,23 @@ export class PostgresStore {
     return rows.map(row => this.file(row, this.legacy() ? roots.get(String(row.user_id)) || this.root(row.user_id) : undefined));
   }
   get(bucket, key) {
+    if (this.v2() && bucket === 'bots') { const row = this.query(`SELECT * FROM ${this.schema}.bots WHERE bot_id=$1`, [key])[0]; return row && this.bot(row); }
     if (this.existing() && bucket === 'files') return this.selectFiles('WHERE f.id=$1::uuid', [key])[0];
     if (this.existing() && bucket === 'users') { const row = this.query(`SELECT u.*,n.body AS node_meta FROM ${this.schema}.users u LEFT JOIN ${this.metadata}.records n ON n.bucket='users' AND n.id=u.user_id::text WHERE u.user_id=$1`, [key])[0]; return row && this.user(row); }
     return this.rawGet(bucket, key);
   }
   list(bucket, owner) {
+    if (this.v2() && bucket === 'bots') return this.query(`SELECT * FROM ${this.schema}.bots${owner === undefined ? '' : ' WHERE user_id=$1'} ORDER BY bot_id`, owner === undefined ? [] : [owner]).map(row => this.bot(row));
     if (this.existing() && bucket === 'files') return this.selectFiles(owner === undefined ? '' : 'WHERE f.user_id=$1', owner === undefined ? [] : [owner]).filter(f => !f._legacyRoot);
     if (this.existing() && bucket === 'users') return this.query(`SELECT u.*,n.body AS node_meta FROM ${this.schema}.users u LEFT JOIN ${this.metadata}.records n ON n.bucket='users' AND n.id=u.user_id::text ORDER BY u.user_id`).map(r => this.user(r));
     if (this.existing() && bucket === 'channels') return this.query(`SELECT * FROM ${this.schema}.channels${owner === undefined ? '' : ' WHERE user_id=$1'}`, owner === undefined ? [] : [owner]).map(r => ({ id: String(r.channel_id), ownerId: String(r.user_id), name: this.v2() ? r.name : r.channel_name, selected: r.selected, health: r.health || 'unknown', createdAt: r.created_at ? new Date(r.created_at).toISOString() : now() }));
     return this.query(`SELECT body FROM ${this.metadata}.records WHERE bucket=$1${owner === undefined ? '' : ' AND owner=$2'} ORDER BY id`, owner === undefined ? [bucket] : [bucket, String(owner)]).map(r => r.body);
   }
   put(bucket, value, owner) {
+    if (this.v2() && bucket === 'bots') {
+      const rows = this.query(`INSERT INTO ${this.schema}.bots(bot_id,user_id,username,token_ciphertext,enabled,created_at,updated_at) VALUES($1,$2,$3,decode($4,'hex'),$5,$6,now()) ON CONFLICT(bot_id) DO UPDATE SET username=excluded.username,token_ciphertext=excluded.token_ciphertext,enabled=excluded.enabled,updated_at=now() WHERE ${this.schema}.bots.user_id=excluded.user_id RETURNING bot_id`, [value.id,value.ownerId,value.username,value.tokenCiphertext,value.enabled,value.createdAt]);
+      if (!rows.length) fail(409, 'bot_already_registered'); return value;
+    }
     if (this.v2() && ['files', 'users', 'channels'].includes(bucket)) return this.putV2(bucket, value, owner);
     if (this.legacy() && ['files', 'users', 'channels'].includes(bucket)) return this.transaction(() => {
       if (bucket === 'files') {
@@ -104,6 +114,7 @@ export class PostgresStore {
     });
   }
   delete(bucket, key, owner) {
+    if (this.v2() && bucket === 'bots') { if (owner === undefined) fail(422, 'bot_owner_required'); this.query(`DELETE FROM ${this.schema}.bots WHERE bot_id=$1 AND user_id=$2`, [key,owner]); }
     if (this.existing() && bucket === 'files') this.query(`DELETE FROM ${this.schema}.files WHERE id=$1::uuid`, [key]);
     if (this.existing() && bucket === 'channels') { if (owner === undefined) fail(422, 'channel_owner_required'); this.query(`DELETE FROM ${this.schema}.channels WHERE channel_id=$1 AND user_id=$2`, [key, owner]); }
     this.query(`DELETE FROM ${this.metadata}.records WHERE bucket=$1 AND id=$2`, [bucket, bucket === 'channels' ? `${owner}:${key}` : String(key)]);

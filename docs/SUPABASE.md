@@ -16,7 +16,7 @@ El TOML original puede permanecer intacto. Las variables anteriores cambian úni
 
 La función tiene una lista cerrada de operaciones y tablas, `search_path` vacío y permiso de ejecución exclusivamente para `service_role`. No ejecuta SQL suministrado por el visitante. Sus cambios de catálogo y metadatos se confirman en una transacción, y rechaza versiones de archivos que ya hayan cambiado. La tabla de metadatos tiene RLS y no se expone al navegador.
 
-La RPC requiere el esquema v2 posterior a retirar `normalized_name`. No cambia las migraciones Go, tablas originales, sesiones o enlaces de Go. La nueva metadata se guarda en `teldrive_node.records`. Las limitaciones funcionales e interoperabilidad pendientes están en [MIGRATION.md](MIGRATION.md).
+La RPC requiere el esquema v2 posterior a retirar `normalized_name`. No ejecuta migraciones Go. Opera sobre los archivos, usuarios, canales y bots originales; la nueva metadata y sesiones Node se guardan en `teldrive_node.records`. No sustituye las sesiones web ni enlaces de Go. Las limitaciones funcionales e interoperabilidad pendientes están en [MIGRATION.md](MIGRATION.md).
 
 Este primer adaptador sigue consultando el catálogo en memoria; HTTPS añade latencia a cada llamada. Conserva las garantías de la transacción de escritura, pero no mantiene una instantánea PostgreSQL durante las lecturas previas. Las restricciones SQL y la comprobación de generaciones protegen los cambios concurrentes de archivos. Para grandes catálogos se recomienda portar filtros y paginación a RPC específicas.
 

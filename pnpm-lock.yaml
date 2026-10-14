@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@noble/ciphers':
+        specifier: 2.4.0
+        version: 2.4.0
       '@noble/hashes':
         specifier: 2.4.0
         version: 2.4.0
@@ -76,6 +79,10 @@ packages:
 
   '@electric-sql/pglite@0.5.10':
     resolution: {integrity: sha512-tXc/25U3ulOkiRQuTFdwIv+JhBqtMdAF7Gvo6CfZZWtSB4+hgC4Wr2vwK5ngvvN5PJfAAEGIsfyCVy1JhCOBYw==}
+
+  '@noble/ciphers@2.4.0':
+    resolution: {integrity: sha512-AnjFn0Jv92laAkvMrghlFZq4qQCIN/4DxFV/eooqtC2YTjB7kBeLMS2T9KJX4Dn+ZVXLOwK0lSgqDtx9gvxtiw==}
+    engines: {node: '>= 20.19.0'}
 
   '@noble/hashes@2.4.0':
     resolution: {integrity: sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==}
@@ -222,6 +229,8 @@ snapshots:
     optional: true
 
   '@electric-sql/pglite@0.5.10': {}
+
+  '@noble/ciphers@2.4.0': {}
 
   '@noble/hashes@2.4.0': {}
 
