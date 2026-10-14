@@ -24,6 +24,7 @@ parentPort.on('message', async ({ request, control, output }) => {
   try {
     const { status, body } = await requestRpc(request);
     if (status < 200 || status >= 300) {
+      console.error(JSON.stringify({ event: 'supabase_rpc_failed', status, code: body.code }));
       const conflict = body.code === '23505' || body.message === 'generation_changed';
       result = { error: { status: conflict ? 409 : 503, code: body.message === 'generation_changed' ? 'generation_changed' : conflict ? 'name_conflict' : 'supabase_unavailable' } };
     } else result = { value: body };
