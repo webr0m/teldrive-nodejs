@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { rootCertificates } from 'node:tls';
 import { once } from 'node:events';
 import { fail, Semaphore } from './core.mjs';
 const require = createRequire(import.meta.url);
@@ -14,11 +16,13 @@ export class Media {
   constructor(config, playback, overrides = {}) {
     this.config = config; this.playback = playback; this.spawn = overrides.spawn || spawn;
     this.ffmpeg = config.ffmpegPath || require('ffmpeg-static'); this.ffprobe = config.ffprobePath || require('@derhuerst/ffprobe-static');
+    this.caFile = config.mediaCaFile || path.join(config.dataDir,'media-root-ca.pem');
+    if(!config.mediaCaFile) { mkdirSync(config.dataDir,{recursive:true,mode:0o700}); writeFileSync(this.caFile,rootCertificates.join('\n'),{mode:0o600}); }
     this.transfers = new Semaphore(config.mediaConcurrency ?? 1); this.cache = new Map();
   }
   available() { return this.config.mediaEnabled === true && !!this.ffmpeg && existsSync(this.ffmpeg); }
   source(ticket) { const url = new URL('/api/v1/playback', this.config.publicUrl); url.search = new URLSearchParams({ ticket, mode: 'original' }).toString(); return url.href; }
-  inputOptions() { return [...inputOptions,...(this.config.publicUrl.startsWith('https:') ? ['-tls_verify','1'] : [])]; }
+  inputOptions() { return [...inputOptions,...(this.config.publicUrl.startsWith('https:') ? ['-tls_verify','1','-ca_file',this.caFile] : [])]; }
   async tracks(ticket) {
     const { file } = this.playback.resolve(ticket), key = `${file.id}:${file.generation}`;
     if (!this.config.mediaEnabled || !this.ffprobe || !existsSync(this.ffprobe)) return { available: false, tracks: [] };
