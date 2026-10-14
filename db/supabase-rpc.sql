@@ -15,6 +15,7 @@ GRANT USAGE ON SCHEMA teldrive_node_api TO service_role;
 CREATE OR REPLACE FUNCTION teldrive_node_api.catalog(request jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 #variable_conflict use_column
+<<catalog_state>>
 DECLARE
   action text := request->>'action'; bucket text := request->>'bucket';
   wanted text := request->>'id'; owner_id text := request->>'owner';
@@ -47,7 +48,7 @@ BEGIN
       WHERE (action<>'get' OR c.channel_id::text=wanted) AND (owner_id IS NULL OR c.user_id::text=owner_id);
     ELSE
       SELECT COALESCE(pg_catalog.jsonb_agg(r.body),'[]'::jsonb) INTO items FROM teldrive_node.records r
-      WHERE r.bucket=catalog.bucket AND (action<>'get' OR r.id=wanted) AND (owner_id IS NULL OR r.owner=owner_id);
+      WHERE r.bucket=catalog_state.bucket AND (action<>'get' OR r.id=wanted) AND (owner_id IS NULL OR r.owner=owner_id);
     END IF;
     RETURN pg_catalog.jsonb_build_object('items',items);
   END IF;
@@ -65,7 +66,7 @@ BEGIN
         IF owner_id IS NULL THEN RAISE EXCEPTION 'owner_required'; END IF;
         DELETE FROM teldrive.channels WHERE channel_id::text=wanted AND user_id::text=owner_id;
       ELSIF bucket='users' THEN RAISE EXCEPTION 'user_delete_not_supported'; END IF;
-      DELETE FROM teldrive_node.records r WHERE r.bucket=catalog.bucket AND r.id=record_key;
+      DELETE FROM teldrive_node.records r WHERE r.bucket=catalog_state.bucket AND r.id=record_key;
     ELSIF op->>'action'='put' THEN
       IF value->>'id' IS DISTINCT FROM wanted THEN RAISE EXCEPTION 'id_mismatch'; END IF;
       IF bucket='files' THEN
@@ -106,4 +107,5 @@ $$;
 REVOKE ALL ON FUNCTION teldrive_node_api.catalog(jsonb) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION teldrive_node_api.catalog(jsonb) TO service_role;
 COMMIT;
+
 

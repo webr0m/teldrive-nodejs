@@ -42,6 +42,11 @@ test('restricted Supabase RPC keeps v2 writes atomic, rejects stale generations 
     database.query(readFileSync(new URL('../db/supabase-rpc.sql', import.meta.url), 'utf8'));
     const rpc = request => database.query('SELECT teldrive_node_api.catalog($1::jsonb) AS response', [JSON.stringify(request)])[0].response;
     const store = new SupabaseStore({}, { rpc }), catalog = new Catalog(store);
+    assert.equal(store.get('settings', 'limits'), undefined);
+    store.put('settings', { id: 'limits', values: { concurrency: 3 } });
+    assert.equal(store.get('settings', 'limits').values.concurrency, 3);
+    assert.equal(store.list('settings').length, 1);
+    store.delete('settings', 'limits'); assert.equal(store.get('settings', 'limits'), undefined);
     const folder = catalog.create('7', { name: 'HTTPS folder' });
     const file = catalog.create('7', { name: 'file.bin', parentId: folder.id }, 'file', { size: 10, encryption: true, encryptionKeyVersion: 2, parts: [{ backend: 'telegram', channelId: '99', messageId: 101, partNo: 1, plainSize: 10, size: 60, legacySalt: 'salt' }] });
     assert.equal(catalog.get('7', file.id).parts[0].legacySalt, 'salt');
