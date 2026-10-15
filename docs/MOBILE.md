@@ -4,6 +4,8 @@ Cliente compartido React + Capacitor 8, con recursos incluidos en la aplicación
 
 ## Funciones
 
+- Aviso para cuentas sin un canal seleccionado: explica el canal privado como disco virtual, los bots opcionales y ofrece accesos a Canales, Bots y el manual. Espera al cierre del recorrido inicial y de otros diálogos, sin superponer ventanas. Las subidas se comprueban antes de crear carpetas o enviar archivos; seleccionar un canal no obliga a usar bots.
+
 - Archivos, búsqueda, carpetas, subidas con reintentos, descarga mediante el guardado/compartir del sistema, lectores y reproducción según formatos admitidos.
 - Compartidos propios y conmigo, enlaces reutilizables, papelera, spam y estadísticas de la cuenta.
 - **Bots personales conservados**, selección del canal de la unidad, sesiones, apariencia, idioma y preferencias de subida. Sin rclone, montaje, claves de API, usuarios/permisos, creación/eliminación de canales, tareas del servidor ni sus límites.

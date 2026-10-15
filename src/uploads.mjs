@@ -21,6 +21,8 @@ export class Uploads {
   }
   create(userId, body) {
     const size = number(body.size, -1, this.config.maxFileSize), filename = name(body.name), parentId = this.catalog.parent(userId, body.parentId);
+    const channel = this.config.backend === 'telegram' ? this.store.list('channels', String(userId)).find(channel => channel.selected) : undefined;
+    if (this.config.backend === 'telegram' && !channel) fail(409, 'storage_channel_required', 'Configura un canal privado de Telegram como unidad antes de subir archivos. Los bots son opcionales.');
     if (body.encryption !== undefined && typeof body.encryption !== 'boolean') fail(422, 'invalid_encryption');
     if (body.hash && (body.hash.algorithm !== 'blake3' || !/^[a-f0-9]{64}$/i.test(body.hash.value || ''))) fail(422, 'invalid_hash');
     const partSize = body.preferredPartSize === undefined ? this.config.partSize : Math.min(number(body.preferredPartSize, 1024 * 1024, 2147483648), this.config.partSize);
@@ -30,6 +32,7 @@ export class Uploads {
       try { new MIMEType(body.mimeType); } catch { fail(422, 'invalid_mime_type'); }
     }
     const u = { id: id(), ownerId: String(userId), parentId, name: filename, expectedSize: size, maxFileSize: this.config.maxFileSize, expectedHash: body.hash, hashScheme: TREE_HASH_SCHEME, mimeType: body.mimeType || 'application/octet-stream', modTime: date(body.modTime), encryption: !!body.encryption, conflictPolicy: body.conflictPolicy || 'fail', partSize, state: 'open', expiresAt: expires(this.config.uploadTtlHours * 3600000), createdAt: now(), parts: [] };
+    if (channel) u.channelId = channel.id;
     this.store.put('uploads', u); return u;
   }
   async putPart(userId, uploadId, partNo, req) {

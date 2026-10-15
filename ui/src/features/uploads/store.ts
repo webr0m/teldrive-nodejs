@@ -11,6 +11,9 @@ import type { FileEntry, NameConflictPolicy, UploadPart, UploadSession } from "@
 import { newClientId } from "@/features/shared/client-id";
 import { newIdempotencyKey } from "@/features/shared/idempotency";
 import { getQueryClient } from "@/lib/queryClient";
+import { ensureStorageReady, useStorageSetupNotice } from "@/lib/storage-setup";
+import { currentUserQueryOptions } from "@/auth/queries";
+import { toast } from "sonner";
 
 export type UploadTaskStatus =
   | "queued"
@@ -50,7 +53,7 @@ export type UploadSettings = {
 type UploadState = {
   tasks: UploadTask[];
   settings: UploadSettings;
-  enqueue: (files: File[], parentId?: string, path?: string) => void;
+  enqueue: (files: File[], parentId?: string, path?: string) => Promise<void>;
   retry: (taskId: string) => void;
   pause: (taskId: string) => void;
   cancel: (taskId: string) => Promise<void>;
@@ -119,7 +122,10 @@ discardLegacyPersistedTasks();
 export const useUploadStore = create<UploadState>((set, get) => ({
   tasks: [],
   settings: readSettings(),
-  enqueue(input, parentId, path = "/") {
+  async enqueue(input, parentId, path = "/") {
+    if (!input.length) return;
+    try { if (!await ensureStorageReady(parentId)) return; }
+    catch (error) { toast.error("No se pudo comprobar el canal de almacenamiento", { description: userMessage(error) }); return; }
     const batchId = newClientId();
     const relativePaths = input.map((file) => file.webkitRelativePath || file.name);
     const rootNames = new Set(relativePaths.map((relativePath) => relativePath.split("/")[0]));
@@ -501,6 +507,11 @@ async function runTask(taskId: string) {
       queryClient.invalidateQueries({ queryKey: ["get", "/v1/storage/dashboard"] }),
     ]).catch(() => {});
   } catch (error) {
+    if (normalizeApiError(error).code === "storage_channel_required") {
+      const user = getQueryClient().getQueryData(currentUserQueryOptions().queryKey);
+      if (user) useStorageSetupNotice.getState().show({ userId: user.userId, parentId: task.parentId, reason: "upload" });
+      void getQueryClient().invalidateQueries({ queryKey: ["storage-setup"] });
+    }
     if (controller.signal.aborted) {
       const current = useUploadStore.getState().tasks.find((item) => item.id === taskId);
       if (current?.status === "running") store.patchTask(taskId, { status: "paused" });

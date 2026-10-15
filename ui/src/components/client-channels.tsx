@@ -36,6 +36,7 @@ export function ClientChannels() {
       await getQueryClient().invalidateQueries({
         queryKey: $api.queryOptions("get", "/v1/channels").queryKey,
       });
+      await getQueryClient().invalidateQueries({ queryKey: ["storage-setup"] });
       toast.success("Canal seleccionado para las nuevas subidas");
     } catch (error) {
       toast.error("No se pudo seleccionar el canal", { description: userMessage(error) });

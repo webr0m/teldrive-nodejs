@@ -48,10 +48,12 @@ function ChannelsSettings() {
       });
     },
   });
-  const refresh = () =>
+  const refresh = () => Promise.all([
+    getQueryClient().invalidateQueries({ queryKey: ["storage-setup"] }),
     getQueryClient().invalidateQueries({
       queryKey: $api.queryOptions("get", "/v1/channels").queryKey,
-    });
+    }),
+  ]);
 
   return (
     <div className="space-y-6">

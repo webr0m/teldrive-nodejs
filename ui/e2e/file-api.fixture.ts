@@ -73,6 +73,7 @@ export async function installFileApi(page: Page) {
     const path = url.pathname.replace(/^\/api/, "");
     const method = request.method();
 
+    if (path === "/v1/me/storage" && method === "GET") return route.fulfill({ json: { requiresChannel: true, configured: true } });
     if (path === "/v1/me" && method === "GET") {
       return route.fulfill({
         json: {

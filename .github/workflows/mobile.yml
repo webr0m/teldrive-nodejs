@@ -16,7 +16,7 @@ jobs:
       - run: npm install --global pnpm@11.25.0 --ignore-scripts
       - run: pnpm install --frozen-lockfile
       - run: pnpm --dir ui exec playwright install --with-deps chromium webkit
-      - run: pnpm --dir ui exec playwright test e2e/client-mobile.spec.ts e2e/client-layout.spec.ts e2e/client-demo.spec.ts e2e/settings-access.spec.ts --project=mobile --project=iphone --workers=2
+      - run: pnpm --dir ui exec playwright test e2e/client-mobile.spec.ts e2e/client-layout.spec.ts e2e/client-demo.spec.ts e2e/settings-access.spec.ts e2e/storage-setup.spec.ts --project=mobile --project=iphone --workers=2
   android:
     runs-on: ubuntu-latest
     steps:

@@ -98,6 +98,11 @@ for (const [suffix, type] of [['verify-code', 'code'], ['verify-password', 'pass
 for (const cookie of [false, true]) route('POST', `/api/v1/auth/${cookie ? 'cookie/' : ''}refresh`, c => result(c.auth.publish(c.auth.refresh(cookie ? cookies(c.req).teldrive_refresh : c.body.refreshToken), c.res, cookie)), { public: true });
 for (const p of ['/api/v1/auth/logout', '/api/v1/auth/cookie/logout']) route('POST', p, c => { c.auth.revoke(c.session); c.auth.clear(c.res); return empty(); });
 route('GET', '/api/v1/me', c => result(c.auth.profile(c.user)));
+route('GET', '/api/v1/me/storage', c => {
+  const requiresChannel = c.config.backend === 'telegram';
+  const ownerId = parentOwner(c, c.query.get('parentId'));
+  return result({ requiresChannel, configured: !requiresChannel || c.store.list('channels', ownerId).some(channel => channel.selected) });
+});
 route('GET', '/api/v1/me/photo', () => empty());
 route('GET', '/api/v1/sessions', c => result(page(c.store.list('sessions', c.user.id).filter(s => !s.revokedAt).map(s => ({ id: s.id, current: s.id === c.session?.id, createdAt: s.createdAt, lastUsedAt: s.lastUsedAt, expiresAt: s.expiresAt })), c.query)));
 route('DELETE', '/api/v1/sessions/:sessionId', c => { const s = c.store.get('sessions', c.params.sessionId); if (!s || s.userId !== c.user.id) fail(404, 'session_not_found'); c.auth.revoke(s); return empty(); });

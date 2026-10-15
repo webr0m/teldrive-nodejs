@@ -26,6 +26,7 @@ import { useInfiniteFilePages } from "@/features/files/queries";
 import { ShareDialog } from "@/features/files/share-dialog";
 import { useUploadStore } from "@/features/uploads/store";
 import { getQueryClient } from "@/lib/queryClient";
+import { showStorageNoticeIfKnownMissing } from "@/lib/storage-setup";
 
 type Permission = "read" | "edit";
 
@@ -345,7 +346,7 @@ export function SharedFileBrowser({ mode, search, navigate }: SharedFileBrowserP
                   variant="primary"
                   aria-label={t("Subir archivos")}
                   isDisabled={fileActions.pending}
-                  onPress={() => uploadTriggerRef.current?.click()}
+                  onPress={() => { if (!showStorageNoticeIfKnownMissing(search.parentId)) uploadTriggerRef.current?.click(); }}
                 >
                   <UploadIcon className="size-4" />
                 </Button>

@@ -44,6 +44,7 @@ import { StorageSummary } from "../components/storage-summary";
 import { getQueryClient } from "../lib/queryClient";
 import { clientOnly, clientPathAllowed, apiUrl } from "@/lib/client-runtime";
 import { ClientTour } from "@/components/client-tour";
+import { StorageSetupNotice } from "@/components/storage-setup-notice";
 import { MobileAdvertising } from "@/components/mobile-advertising";
 import { ClientNavigation } from "@/components/client-navigation";
 
@@ -477,6 +478,7 @@ function Layout() {
           </ClientNavigation>
           <UploadShelf />
           <ClientTour />
+          <StorageSetupNotice />
         </div>
       </AriaRouterProvider>
     );
@@ -535,6 +537,7 @@ function Layout() {
         </div>
         <UploadShelf />
         {clientOnly && <ClientTour />}
+        <StorageSetupNotice />
       </div>
     </AriaRouterProvider>
   );

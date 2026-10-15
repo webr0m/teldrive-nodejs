@@ -15,6 +15,7 @@ import { AppDialog } from "@/components/dialogs/app-dialog";
 import { isPreviewable } from "@/components/file-preview-dialog";
 import { Page, PageContent } from "@/components/page";
 import { useUploadStore } from "@/features/uploads/store";
+import { showStorageNoticeIfKnownMissing } from "@/lib/storage-setup";
 import PasteIcon from "~icons/gravity-ui/arrow-right-to-square";
 import UploadIcon from "~icons/gravity-ui/arrow-up-from-line";
 import FileIcon from "~icons/gravity-ui/file";
@@ -671,6 +672,7 @@ export function FileManagerPage({
             <Dropdown.Menu
               aria-label={t("Subir")}
               onAction={(key) => {
+                if (showStorageNoticeIfKnownMissing(location.parentId)) return;
                 setActivePane(pane);
                 if (key === "files") uploadFilesTriggerRef.current?.click();
                 if (key === "folder") uploadFolderTriggerRef.current?.click();

@@ -4,25 +4,28 @@ import { Button, Modal } from "@heroui/react";
 import { currentUserQueryOptions } from "@/auth/queries";
 import { clientOnly } from "@/lib/client-runtime";
 import { clientManual } from "@/lib/client-manual";
+import { needsClientTour, rememberClientTour, useClientOnboarding } from "@/lib/client-onboarding";
 export function repeatClientTour() {
   window.dispatchEvent(new Event("teldrive-client-tour"));
 }
 export function ClientTour() {
   const { data: user } = useQuery(currentUserQueryOptions());
-  const [open, setOpen] = useState(false),
-    [step, setStep] = useState(0);
-  const key = `teldrive-tour-v1:${user?.userId}`;
+  const { tourOpen: open, setTourOpen: setOpen } = useClientOnboarding();
+  const [step, setStep] = useState(0);
   useEffect(() => {
-    if (clientOnly && user && !localStorage.getItem(key)) setOpen(true);
+    if (user && needsClientTour(user.userId)) setOpen(true);
     const repeat = () => {
       setStep(0);
       setOpen(true);
     };
     window.addEventListener("teldrive-client-tour", repeat);
-    return () => window.removeEventListener("teldrive-client-tour", repeat);
-  }, [key, user?.userId]);
+    return () => {
+      window.removeEventListener("teldrive-client-tour", repeat);
+      setOpen(false);
+    };
+  }, [user?.userId, setOpen]);
   const close = () => {
-    localStorage.setItem(key, "seen");
+    if (user) rememberClientTour(user.userId);
     setOpen(false);
   };
   const page = clientManual[step];

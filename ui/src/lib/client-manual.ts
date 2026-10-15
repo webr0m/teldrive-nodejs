@@ -17,8 +17,10 @@ export const clientManual = [
     title: "Elegir el canal de tu unidad",
     summary: "Selecciona el canal de Telegram donde se guardarán tus nuevas subidas.",
     steps: [
+      "Antes de subir archivos, configura un canal privado de Telegram como disco virtual. Si tu unidad no tiene un canal seleccionado, verás un aviso al entrar y al intentar subir. El aviso incluye un acceso directo a este manual y espera a que termines u omitas el recorrido inicial.",
       "Abre Ajustes en la barra inferior y entra en Canales de Telegram. El canal marcado En uso es el destino de las nuevas subidas.",
       "Pulsa Buscar canales en Telegram para consultar los canales disponibles de tu cuenta. Pulsa Usar canal para guardar tu elección. Tu cuenta y los bots necesitan los permisos correspondientes en ese canal.",
+      "Si no tienes uno, crea un canal en Telegram y elige la opción Privado. En la web puedes crearlo desde Configuración → Canales; después selecciónalo. Los bots son opcionales: la cuenta de Telegram basta para comenzar.",
       "Cambiar de canal no mueve ni elimina los archivos existentes: seguirán disponibles en la misma unidad. Las transferencias que ya comenzaron conservan su canal original.",
       "La selección es una preferencia de tu cuenta en el servidor, no un montaje en el teléfono. Si compartes la misma cuenta y servidor en otras instalaciones, ten en cuenta esta preferencia al iniciar nuevas subidas.",
     ],
@@ -74,6 +76,7 @@ export const clientManual = [
     summary: "La edición móvil conserva los bots de tu cuenta.",
     steps: [
       "Abre Configuración → Bots para consultar, añadir o quitar tus propios bots según los permisos de tu cuenta.",
+      "Los bots son opcionales y pueden mejorar la velocidad de carga y descarga al repartir transferencias. El resultado depende de Telegram, la conexión y los límites del servidor; no hay una velocidad garantizada.",
       "Crea el bot en Telegram con BotFather y utiliza su token en Teldrive. El token es una credencial: no lo compartas ni lo incluyas en capturas.",
       "Los bots necesitan acceso a los canales utilizados por tu unidad. Un fallo de permisos o de acceso a Telegram no se resuelve aumentando la concurrencia.",
       "Cambiar un bot puede afectar a otras instalaciones que usan la misma base. La app móvil no permite modificar usuarios ni límites globales del servidor.",
