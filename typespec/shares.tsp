@@ -51,7 +51,7 @@ model ShareCreated {
   id: Uuid;
   fileId: Uuid;
 
-  /** Opaque public token returned only when the share is created. */
+  /** Opaque public token. Repeated requests with the same policy reuse an active share. */
   token: string;
 
   publicUrl: Uri;
@@ -65,6 +65,8 @@ model ShareCreated {
 model ShareSummary {
   id: Uuid;
   fileId: Uuid;
+  /** Reusable public URL, available only to the authenticated owner. */
+  publicUrl: Uri;
   passwordProtected: boolean;
   expiresAt?: utcDateTime;
   maxDownloads?: int64;

@@ -31,6 +31,6 @@ Pruebas automatizadas de árboles de 12000 niveles, ciclos y archivos huérfanos
 
 ## Límites pendientes
 
-El acceso a la base conserva una frontera síncrona y resultados de hasta 32 MiB; los listados aún cargan el catálogo del usuario antes de paginar. La paginación SQL y una conversión asíncrona del repositorio requieren otra etapa. No se afirma equivalencia completa con Go: siguen pendientes ACL entre cuentas, trabajos/importaciones River, SSE, regex y subtítulos de imagen. Los enlaces y permisos emitidos por Go se conservan separados. La compatibilidad completa del cliente rclone requiere validación específica.
+El acceso a la base conserva una frontera síncrona y resultados de hasta 32 MiB; los listados aún cargan el catálogo del usuario antes de paginar. La paginación SQL y una conversión asíncrona del repositorio requieren otra etapa. No se afirma equivalencia completa con Go: siguen pendientes interoperabilidad con permisos y trabajos/importaciones River, SSE, regex y subtítulos de imagen. Desde 0.3.0 existen permisos entre cuentas y tareas de mantenimiento nativas de Node; consulta [SHARING.md](SHARING.md). Los enlaces y permisos emitidos por Go se conservan separados. La compatibilidad completa del cliente rclone requiere validación específica.
 
 La reutilización de conexiones reduce reconexiones; la velocidad final sigue dependiendo de Telegram, Supabase, el códec y los recursos del hosting. Una prueba de arranque de un vídeo no certifica la reproducción completa de todas las películas.

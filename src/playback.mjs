@@ -2,10 +2,10 @@ import { token, hash, expires, expired, fail } from './core.mjs';
 
 export class Playback {
   constructor(store, catalog, shares, config) { Object.assign(this, { store, catalog, shares, config }); }
-  create(file, session, share) {
+  create(file, session, share, actorId) {
     if (file.kind !== 'file') fail(404, 'file_not_found');
     const secret = token(), expiresAt = expires((this.config.playbackTtlMinutes ?? 60) * 60000);
-    this.store.put('tickets', { id: hash(secret), purpose: 'playback', userId: file.ownerId, fileId: file.id, sessionId: session?.id, shareId: share?.id, sharePasswordHash: share?.passwordHash, expiresAt });
+    this.store.put('tickets', { id: hash(secret), purpose: 'playback', userId: file.ownerId, actorId: session?.userId || actorId, fileId: file.id, sessionId: session?.id, shareId: share?.id, sharePasswordHash: share?.passwordHash, expiresAt });
     return { ticket: secret, expiresAt, conversionAvailable: this.media?.available() ?? false };
   }
   resolve(secret) {
@@ -14,9 +14,12 @@ export class Playback {
     if (!grant || grant.purpose !== 'playback' || expired(grant.expiresAt)) fail(401, 'invalid_ticket');
     const user = this.store.get('users', grant.userId);
     if (!user || user.disabled) fail(401, 'invalid_ticket');
+    if (grant.actorId) { if (this.store.get('users', grant.actorId)?.disabled) fail(401,'invalid_ticket'); this.access?.authorize(grant.actorId,grant.fileId); }
     if (grant.sessionId) {
       const session = this.store.get('sessions', grant.sessionId);
       if (!session || session.revokedAt || expired(session.expiresAt)) fail(401, 'invalid_ticket');
+      if (this.store.get('users', session.userId)?.disabled) fail(401, 'invalid_ticket');
+      if (!grant.actorId) this.access?.authorize(session.userId, grant.fileId);
     }
     let share;
     if (grant.shareId) {

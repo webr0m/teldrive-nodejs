@@ -44,6 +44,17 @@ test('restricted Supabase RPC keeps v2 writes atomic, rejects stale generations 
     database.query(readFileSync(new URL('../db/supabase-rpc.sql', import.meta.url), 'utf8'));
     const rpc = request => database.query('SELECT teldrive_node_api.catalog($1::jsonb) AS response', [JSON.stringify(request)])[0].response;
     const store = new SupabaseStore({}, { rpc }), catalog = new Catalog(store);
+    store.put('grants',{id:'node-grant',ownerId:'7',granteeUserId:'8',permission:'read'});
+    assert.equal(store.list('grants','7')[0].granteeUserId,'8');
+    store.put('jobs',{id:'node-job',ownerId:'7',status:'available',attempt:0,scheduledAt:new Date(0).toISOString()});
+    assert.equal(store.claimJob('node-job','worker-a',30).attempt,1);
+    assert.equal(store.claimJob('node-job','worker-b',30),undefined);
+    assert.equal(store.claimJob('node-job','worker-a',30).attempt,1);
+    assert.throws(()=>store.claimJob('node-job','worker-a',0));
+    const crashed=store.get('jobs','node-job');crashed.leaseExpiresAt=new Date(0).toISOString();store.put('jobs',crashed);
+    assert.equal(database.claimJob('node-job','worker-b',30).attempt,2);
+    const cancelled=store.get('jobs','node-job');cancelled.status='cancelled';store.put('jobs',cancelled);
+    assert.equal(store.claimJob('node-job','worker-b',30),undefined);
     assert.equal(store.get('settings', 'limits'), undefined);
     store.put('settings', { id: 'limits', values: { concurrency: 3 } });
     assert.equal(store.get('settings', 'limits').values.concurrency, 3);

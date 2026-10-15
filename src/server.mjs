@@ -11,6 +11,8 @@ import { Telegram } from './telegram.mjs';
 import { Storage } from './storage.mjs';
 import { Uploads } from './uploads.mjs';
 import { Shares } from './shares.mjs';
+import { Access } from './access.mjs';
+import { Jobs } from './jobs.mjs';
 import { Settings } from './settings.mjs';
 import { Playback } from './playback.mjs';
 import { Media } from './media.mjs';
@@ -33,6 +35,10 @@ const admin = user => { if (!['owner', 'admin'].includes(user.role)) fail(403, '
 const validateIds = body => { if (!Array.isArray(body.fileIds) || !body.fileIds.length || body.fileIds.length > 500 || body.fileIds.some(v => typeof v !== 'string')) fail(422, 'invalid_file_ids'); return [...new Set(body.fileIds)]; };
 const metadata = (c, file, status = 200) => result(c.catalog.public(file), status, { ETag: c.catalog.etag(file), ...(status === 201 ? { Location: `/api/v1/files/${file.id}` } : {}) });
 const publicShare = c => c.shares.resolve(c.params.shareToken, c.req.headers['x-share-password'], cookies(c.req).td_share_session);
+const parentOwner = (c, parentId, ownerId = c.user.id) => {
+  if (!parentId) { if (String(ownerId) !== String(c.user.id)) fail(403, 'shared_destination_required'); return c.user.id; }
+  return c.access.authorize(c.user.id, parentId, true).ownerId;
+};
 
 route('GET', '/api/health/live', () => result({ status: 'ok', version: `node-${packageInfo.version}` }), { public: true });
 route('GET', '/api/health/ready', c => { c.store.ready(); return result({ status: 'ok', version: `node-${packageInfo.version}` }); }, { public: true });
@@ -64,6 +70,15 @@ route('POST', '/api/v1/api-keys', c => {
 route('GET', '/api/v1/api-keys', c => result(page(c.store.list('keys', c.user.id).filter(k => !k.revokedAt).map(({ id, keyId, userId, ...k }) => ({ id: keyId, ...k })), c.query)));
 route('DELETE', '/api/v1/api-keys/:keyId', c => { const k = c.store.list('keys', c.user.id).find(k => k.keyId === c.params.keyId); if (!k) fail(404, 'key_not_found'); k.revokedAt = now(); c.store.put('keys', k); return empty(); });
 route('GET', '/api/v1/admin/settings', c => { admin(c.user); return result(c.settings.read()); });
+route('GET', '/api/v1/jobs', c => { admin(c.user); c.jobs.wake(); return result(c.jobs.list(c.user.id,c.query)); });
+route('POST', '/api/v1/jobs', c => { admin(c.user); return result(c.jobs.create(c.user.id,c.body),201); });
+route('GET', '/api/v1/jobs/statistics', c => { admin(c.user); return result(c.jobs.statistics(c.user.id)); });
+route('GET', '/api/v1/jobs/queues', c => { admin(c.user); return result(c.jobs.queues(c.user.id)); });
+for (const action of ['pause','resume']) route('POST',`/api/v1/jobs/queues/:queue/${action}`,c=>{admin(c.user);c.jobs.pause(c.user.id,c.params.queue,action==='pause');if(action==='resume')c.jobs.wake();return empty();});
+route('DELETE','/api/v1/jobs/purge',c=>{admin(c.user);return result(c.jobs.purge(c.user.id,c.query.get('status')));});
+route('GET','/api/v1/jobs/:jobId',c=>{admin(c.user);return result(c.jobs.public(c.jobs.get(c.user.id,c.params.jobId)));});
+for(const action of ['cancel','retry'])route('POST',`/api/v1/jobs/:jobId/${action}`,c=>{admin(c.user);return result(c.jobs[action](c.user.id,c.params.jobId));});
+route('DELETE','/api/v1/jobs/:jobId',c=>{admin(c.user);c.jobs.delete(c.user.id,c.params.jobId);return empty();});
 route('PATCH', '/api/v1/admin/settings', c => result(c.settings.update(c.user, c.body)));
 route('GET', '/api/v1/admin/users', c => { admin(c.user); return result(c.store.list('users').map(u => ({ ...c.auth.profile(u), disabled: !!u.disabled, updatedAt: u.updatedAt }))); });
 route('PATCH', '/api/v1/admin/users/:userId', c => {
@@ -76,33 +91,41 @@ route('PATCH', '/api/v1/admin/users/:userId', c => {
   return result({ ...c.auth.profile(user), disabled: !!user.disabled, updatedAt: user.updatedAt });
 });
 route('POST', '/api/v1/admin/users/:userId/revoke-access', c => { admin(c.user); const user = c.store.get('users', c.params.userId); if (!user) fail(404, 'user_not_found'); if (user.role === 'owner') fail(403, 'owner_role_protected'); for (const s of c.store.list('sessions', user.id)) c.auth.revoke(s); for (const key of c.store.list('keys', user.id)) { key.revokedAt = now(); c.store.put('keys', key); } return empty(); });
-route('GET', '/api/v1/users/search', c => { if (!c.query.get('search')) fail(422, 'search_required'); return result(c.store.list('users').filter(u => !u.disabled && `${u.username || ''} ${u.displayName}`.toLowerCase().includes(c.query.get('search').toLowerCase())).slice(0, 100).map(u => ({ userId: Number(u.id), displayName: u.displayName, username: u.username }))); });
+route('GET', '/api/v1/users/search', c => { if (!c.query.get('search')) fail(422, 'search_required'); return result(c.store.list('users').filter(u => !u.disabled && `${u.id} ${u.username || ''} ${u.displayName}`.toLowerCase().includes(c.query.get('search').toLowerCase())).slice(0, 100).map(u => ({ userId: Number(u.id), displayName: u.displayName, username: u.username }))); });
 
-route('GET', '/api/v1/files', c => result(page(c.catalog.list(c.user.id, c.query), c.query)));
+route('GET', '/api/v1/files', c => {
+  const parentId = c.query.get('parentId'), file = parentId ? c.access.authorize(c.user.id, parentId) : undefined;
+  if (file && file.ownerId !== c.user.id && (c.query.has('path') || c.query.get('scope') === 'drive' || (c.query.get('status') || 'active') !== 'active')) fail(422, 'shared_parent_required');
+  return result(page(c.catalog.list(file?.ownerId || c.user.id, c.query), c.query));
+});
 route('GET', '/api/v1/files/statistics/drive', c => result(c.catalog.statistics(c.user.id)));
 route('GET', '/api/v1/files/statistics/categories', c => result(c.catalog.categories(c.user.id)));
 route('GET', '/api/v1/storage/stats', c => result(c.catalog.dashboard(c.user.id)));
-route('POST', '/api/v1/folders', c => metadata(c, c.catalog.create(c.user.id, c.body), 201));
+route('POST', '/api/v1/folders', c => metadata(c, c.catalog.create(parentOwner(c, c.body.parentId), c.body), 201));
 for (const method of ['POST', 'DELETE']) route(method, '/api/v1/files/bookmarks', c => { const fileIds = validateIds(c.body); c.store.transaction(() => { for (const fileId of fileIds) { const f = c.catalog.get(c.user.id, fileId, true); f.bookmark = method === 'POST'; c.store.put('files', f); } }); return empty(); });
 for (const action of ['move', 'trash','spam']) route('POST', `/api/v1/files/bulk/${action}`, c => result({ items: c.store.transaction(() => validateIds(c.body).map(fileId => c.catalog.public(action === 'move' ? c.catalog.move(c.user.id, fileId, c.body) : c.catalog[action](c.user.id, fileId)))) }));
 route('DELETE', '/api/v1/files/trash', async c => { for (const f of c.catalog.all(c.user.id).filter(f => f.status === 'trashed')) if (c.store.get('files', f.id)) await c.uploads.purge(c.user.id, f.id); return empty(); });
-route('GET', '/api/v1/files/:fileId', c => metadata(c, c.catalog.get(c.user.id, c.params.fileId)));
-route('PATCH', '/api/v1/files/:fileId', c => metadata(c, c.catalog.update(c.user.id, c.params.fileId, c.body, c.req.headers['if-match'])));
-route('POST', '/api/v1/files/:fileId/move', c => c.store.transaction(() => metadata(c, c.catalog.move(c.user.id, c.params.fileId, c.body, c.req.headers['if-match']))));
+route('GET', '/api/v1/files/:fileId', c => metadata(c, c.access.authorize(c.user.id, c.params.fileId, false, false)));
+route('PATCH', '/api/v1/files/:fileId', c => metadata(c, c.catalog.update(c.access.authorize(c.user.id, c.params.fileId, true).ownerId, c.params.fileId, c.body, c.req.headers['if-match'])));
+route('POST', '/api/v1/files/:fileId/move', c => c.store.transaction(() => {
+  const source = c.access.authorize(c.user.id, c.params.fileId, true), destinationOwner = parentOwner(c, c.body.parentId, source.ownerId);
+  if (destinationOwner !== source.ownerId) fail(422, 'cross_owner_move_not_supported');
+  return metadata(c, c.catalog.move(source.ownerId, source.id, c.body, c.req.headers['if-match']));
+}));
 route('POST', '/api/v1/files/:fileId/copy', async c => metadata(c, await c.uploads.copy(c.user.id, c.params.fileId, c.body), 201));
-route('DELETE', '/api/v1/files/:fileId', c => { c.catalog.trash(c.user.id, c.params.fileId); return empty(); });
+route('DELETE', '/api/v1/files/:fileId', c => { c.catalog.trash(c.access.authorize(c.user.id, c.params.fileId, true).ownerId, c.params.fileId); return empty(); });
 route('POST', '/api/v1/files/:fileId/restore', c => metadata(c, c.catalog.restore(c.user.id, c.params.fileId)));
 route('DELETE', '/api/v1/files/:fileId/purge', async c => { await c.uploads.purge(c.user.id, c.params.fileId); return empty(); });
-route('GET', '/api/v1/files/:fileId/view-state', c => { c.catalog.get(c.user.id, c.params.fileId, true); const state = c.store.get('views', c.params.fileId); return state ? result(state.body) : empty(); });
+route('GET', '/api/v1/files/:fileId/view-state', c => { const file = c.access.authorize(c.user.id, c.params.fileId); const state = c.store.get('views', `${c.user.id}:${file.id}`) || (file.ownerId === c.user.id ? c.store.get('views', file.id) : undefined); return state ? result(state.body) : empty(); });
 route('PUT', '/api/v1/files/:fileId/view-state', c => {
-  c.catalog.get(c.user.id, c.params.fileId, true);
+  c.access.authorize(c.user.id, c.params.fileId);
   if (!['image', 'video', 'audio', 'pdf', 'ebook', 'text'].includes(c.body.kind) || (c.body.bookmarks && (!Array.isArray(c.body.bookmarks) || c.body.bookmarks.length > 500))) fail(422, 'invalid_view_state');
   const body = { fileId: c.params.fileId, kind: c.body.kind, position: c.body.position || {}, preferences: c.body.preferences || {}, bookmarks: c.body.bookmarks || [], updatedAt: now() };
-  c.store.put('views', { id: c.params.fileId, ownerId: c.user.id, body }); return result(body);
+  c.store.put('views', { id: `${c.user.id}:${c.params.fileId}`, ownerId: c.user.id, body }); return result(body);
 });
-route('DELETE', '/api/v1/files/:fileId/view-state', c => { c.catalog.get(c.user.id, c.params.fileId); c.store.delete('views', c.params.fileId); return empty(); });
+route('DELETE', '/api/v1/files/:fileId/view-state', c => { const file = c.access.authorize(c.user.id, c.params.fileId); c.store.delete('views', `${c.user.id}:${file.id}`); if (file.ownerId === c.user.id) c.store.delete('views', file.id); return empty(); });
 
-route('POST', '/api/v1/uploads', c => result(c.uploads.public(c.uploads.create(c.user.id, c.body)), 201));
+route('POST', '/api/v1/uploads', c => { const u = c.uploads.create(parentOwner(c, c.body.parentId), c.body); if (u.ownerId !== c.user.id) { u.createdBy = c.user.id; c.store.put('uploads', u); } return result(c.uploads.public(u), 201); });
 route('GET', '/api/v1/uploads', c => result(page(c.store.list('uploads', c.user.id).filter(u => !c.query.has('state') || u.state === c.query.get('state')).map(u => c.uploads.public(u)), c.query)));
 route('GET', '/api/v1/uploads/statistics', c => {
   const days = number(Number(c.query.get('days') || 30), 1, 366), dates = new Map();
@@ -149,10 +172,19 @@ route('DELETE', '/api/v1/channels/:channelId', c => {
   c.store.delete('channels', channel.id, c.user.id); return empty();
 });
 route('POST', '/api/v1/files/:fileId/shares', c => result(c.shares.create(c.user.id, c.params.fileId, c.body), 201));
+route('POST', '/api/v1/files/:fileId/grants', c => result(c.access.create(c.user.id, c.params.fileId, c.body), 201));
+route('GET', '/api/v1/files/:fileId/grants', c => { c.catalog.get(c.user.id, c.params.fileId, true); return result(c.store.list('grants', c.user.id).filter(g => g.fileId === c.params.fileId && c.access.live(g)).map(g => c.access.public(g))); });
+route('PATCH', '/api/v1/grants/:grantId', c => result(c.access.update(c.user.id, c.params.grantId, c.body)));
+route('DELETE', '/api/v1/grants/:grantId', c => { const g = c.access.get(c.user.id, c.params.grantId); g.revokedAt = now(); c.store.put('grants', g); return empty(); });
 route('GET', '/api/v1/files/:fileId/shares', c => { c.catalog.get(c.user.id, c.params.fileId); return result(page(c.store.list('shares', c.user.id).filter(s => s.fileId === c.params.fileId && !s.revokedAt).map(s => c.shares.summary(s)), c.query)); });
 route('PATCH', '/api/v1/shares/:shareId', c => result(c.shares.update(c.user.id, c.params.shareId, c.body)));
 route('DELETE', '/api/v1/shares/:shareId', c => { const s = c.shares.get(c.user.id, c.params.shareId); s.revokedAt = now(); c.store.put('shares', s); return empty(); });
-route('GET', '/api/v1/shared', c => { const fileIds = new Set(c.store.list('shares', c.user.id).filter(s => !s.revokedAt && !expired(s.expiresAt)).map(s => s.fileId)), tree = c.catalog.tree(c.user.id); return result(tree.files.filter(f => fileIds.has(f.id) && tree.active(f)).map(f => c.catalog.public(f))); });
+route('GET', '/api/v1/shared', c => { const fileIds = new Set([...c.store.list('shares', c.user.id).filter(s => !s.revokedAt && !expired(s.expiresAt) && (s.maxDownloads === undefined || s.downloadCount < s.maxDownloads)), ...c.store.list('grants', c.user.id).filter(g => c.access.live(g))].map(s => s.fileId)), tree = c.catalog.tree(c.user.id); return result(tree.files.filter(f => fileIds.has(f.id) && tree.active(f)).map(f => c.catalog.public(f))); });
+route('GET', '/api/v1/shared/with-me', c => result(c.access.incoming(c.user.id)));
+route('GET', '/api/v1/shared/spam', c => result(c.access.incoming(c.user.id, true).map(e => e.file)));
+route('POST', '/api/v1/shared/spam/:fileId', c => { c.access.quarantine(c.user.id, c.params.fileId, 'spam'); return empty(); });
+route('DELETE', '/api/v1/shared/spam/:fileId', c => { c.access.quarantine(c.user.id, c.params.fileId, 'restore'); return empty(); });
+route('DELETE', '/api/v1/shared/spam/:fileId/dismiss', c => { c.access.quarantine(c.user.id, c.params.fileId, 'dismiss'); return empty(); });
 route('POST', '/api/v1/public/shares/:shareToken/unlock', c => { c.shares.unlock(c.params.shareToken, c.body.password, c.res); return empty(); }, { public: true });
 route('GET', '/api/v1/public/shares/:shareToken', c => { const s = publicShare(c); return result({ id: s.id, file: c.catalog.public(c.shares.file(s)), passwordProtected: !!s.passwordHash, expiresAt: s.expiresAt, permission: 'read' }); }, { public: true });
 route('GET', '/api/v1/public/shares/:shareToken/files', c => {
@@ -201,10 +233,10 @@ async function content(c, file, share) {
   });
 }
 for (const method of ['GET', 'HEAD']) {
-  for (const suffix of ['/content', '/content/:fileName']) route(method, `/api/v1/files/:fileId${suffix}`, c => content(c, c.catalog.get(c.user.id, c.params.fileId, true)));
+  for (const suffix of ['/content', '/content/:fileName']) route(method, `/api/v1/files/:fileId${suffix}`, c => content(c, c.access.authorize(c.user.id, c.params.fileId)));
   for (const middle of ['', '/files/:fileId']) for (const suffix of ['/content', '/content/:fileName']) route(method, `/api/v1/public/shares/:shareToken${middle}${suffix}`, c => { const s = publicShare(c); return content(c, c.shares.file(s, c.params.fileId), s); }, { public: true });
 }
-route('POST', '/api/v1/files/:fileId/playback', c => result(c.playback.create(c.catalog.get(c.user.id, c.params.fileId, true), c.session), 201));
+route('POST', '/api/v1/files/:fileId/playback', c => result(c.playback.create(c.access.authorize(c.user.id, c.params.fileId), c.session, undefined, c.user.id), 201));
 route('POST', '/api/v1/public/shares/:shareToken/files/:fileId/playback', c => { const share = publicShare(c); return result(c.playback.create(c.shares.file(share, c.params.fileId), undefined, share), 201); }, { public: true });
 for (const method of ['GET','HEAD']) route(method, '/api/v1/playback', c => {
   const { file, share } = c.playback.resolve(c.query.get('ticket'));
@@ -245,7 +277,10 @@ export function createApp(config, overrides = {}) {
   if (!proxy) {
     const store = overrides.store || (config.databaseTransport === 'supabase' ? new SupabaseStore(config) : config.databaseUrl ? new PostgresStore(config) : new Store(config.dataDir)), catalog = new Catalog(store), telegram = overrides.telegram || new Telegram(store, config);
     const auth = new Auth(store, config, telegram), storage = overrides.storage || new Storage(config, telegram), uploads = new Uploads(store, catalog, storage, config), shares = new Shares(store, catalog, config), settings = new Settings(store, config, uploads);
-    context = { store, catalog, telegram, auth, storage, uploads, shares, settings, config, playback: new Playback(store, catalog, shares, config) };
+    const access = new Access(store, catalog); uploads.access = access;
+    context = { store, catalog, telegram, auth, storage, uploads, shares, settings, config, access, playback: new Playback(store, catalog, shares, config) };
+    context.playback.access = access;
+    context.jobs = new Jobs(store, uploads, config); context.jobs.start();
     context.media = new Media(config, context.playback); context.playback.media = context.media;
   }
   const cleanupTimer = context ? setInterval(() => { void context.uploads.drainCleanup().catch(() => {}); }, 60000).unref() : undefined;
@@ -318,7 +353,7 @@ export function createApp(config, overrides = {}) {
   });
   server.requestTimeout = 3600000; server.headersTimeout = 60000; server.keepAliveTimeout = 5000;
   if (proxy) server.on('upgrade', proxy.upgrade);
-  return { server, context, async close() { clearInterval(cleanupTimer); await new Promise(resolve => server.close(resolve)); await context?.telegram.close?.(); context?.store.close(); } };
+  return { server, context, async close() { clearInterval(cleanupTimer); await context?.jobs.close(); await new Promise(resolve => server.close(resolve)); await context?.telegram.close?.(); context?.store.close(); } };
 }
 export async function start() {
   const config = readConfig(), app = createApp(config);

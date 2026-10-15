@@ -2,6 +2,10 @@ import { number, fail, now } from './core.mjs';
 
 // Infrastructure-independent limits, persisted separately from credentials.
 export const limitDefinitions = {
+  jobPollSeconds: { label: 'Intervalo de consulta de tareas (segundos)', min: 1, max: 300, env: 'JOB_POLL_SECONDS' },
+  jobLeaseSeconds: { label: 'Reserva de ejecución de tareas (segundos)', min: 30, max: 3600, env: 'JOB_LEASE_SECONDS' },
+  jobBatchLimit: { label: 'Máximo de elementos por tarea de mantenimiento', min: 1, max: 10000, env: 'JOB_BATCH_LIMIT' },
+  pendingRetentionDays: { label: 'Retención de archivos pendientes de eliminación (días)', min: 1, max: 3650, env: 'PENDING_RETENTION_DAYS' },
   staticCacheBytes: { label: 'Caché de archivos de la interfaz (bytes; 0 desactiva)', min: 0, max: 67108864, env: 'STATIC_CACHE_BYTES' },
   downloadBots: { label: 'Bots disponibles para descargas (0 usa la cuenta)', min: 0, max: 200, env: 'DOWNLOAD_BOTS' },
   botAttempts: { label: 'Intentos con bots antes de usar la cuenta', min: 1, max: 20, env: 'BOT_ATTEMPTS' },

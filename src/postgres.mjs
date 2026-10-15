@@ -38,6 +38,9 @@ export class PostgresStore {
     return response.rows;
   }
   ready() { this.query('SELECT 1'); }
+  claimJob(jobId, workerId, leaseSeconds) {
+    return this.query(`UPDATE ${this.metadata}.records SET body=body||jsonb_build_object('status','running','workerId',$2::text,'leaseExpiresAt',now()+($3::int*interval '1 second'),'attempt',CASE WHEN body->>'workerId'=$2 AND body->>'status'='running' THEN (body->>'attempt')::int ELSE (body->>'attempt')::int+1 END,'startedAt',CASE WHEN body->>'workerId'=$2 AND body->>'status'='running' THEN body->>'startedAt' ELSE now()::text END,'attemptedBy',jsonb_build_array($2::text)) WHERE bucket='jobs' AND id=$1 AND ((body->>'status' IN ('pending','scheduled','available','retryable') AND (body->>'scheduledAt')::timestamptz<=now()) OR (body->>'status'='running' AND ((body->>'leaseExpiresAt')::timestamptz<=now() OR body->>'workerId'=$2))) RETURNING body`,[jobId,workerId,leaseSeconds])[0]?.body;
+  }
   rawGet(bucket, key) { return this.query(`SELECT body FROM ${this.metadata}.records WHERE bucket=$1 AND id=$2`, [bucket, String(key)])[0]?.body; }
   rawPut(bucket, value, owner = value.ownerId ?? value.userId ?? '') { this.query(`INSERT INTO ${this.metadata}.records VALUES ($1,$2,$3,$4::jsonb) ON CONFLICT(bucket,id) DO UPDATE SET owner=excluded.owner,body=excluded.body`, [bucket, bucket === 'channels' ? `${owner}:${value.id}` : String(value.id), String(owner), JSON.stringify(value)]); return value; }
   legacy() { return this.config.databaseLayout === 'legacy'; }

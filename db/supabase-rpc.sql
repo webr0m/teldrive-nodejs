@@ -21,8 +21,14 @@ DECLARE
   wanted text := request->>'id'; owner_id text := request->>'owner';
   items jsonb; op jsonb; value jsonb; part jsonb; record_key text;
   old_generation bigint; old_owner bigint; changed integer; is_new boolean;
-  allowed constant text[] := ARRAY['files','users','channels','bots','bot-state','sessions','session-index','keys','flows','uploads','shares','share-sessions','views','settings','tickets','idempotency','idempotency-pending','cleanup'];
+  allowed constant text[] := ARRAY['files','users','channels','bots','bot-state','sessions','session-index','keys','flows','uploads','shares','share-sessions','views','settings','tickets','idempotency','idempotency-pending','cleanup','grants','jobs','job-queues'];
 BEGIN
+  IF action='claim-job' THEN
+    IF request->>'workerId' IS NULL OR (request->>'leaseSeconds')::int NOT BETWEEN 30 AND 3600 THEN RAISE EXCEPTION 'invalid_lease'; END IF;
+    UPDATE teldrive_node.records r SET body=r.body||pg_catalog.jsonb_build_object('status','running','workerId',request->>'workerId','leaseExpiresAt',pg_catalog.now()+((request->>'leaseSeconds')::int*interval '1 second'),'attempt',CASE WHEN r.body->>'workerId'=request->>'workerId' AND r.body->>'status'='running' THEN (r.body->>'attempt')::int ELSE (r.body->>'attempt')::int+1 END,'startedAt',CASE WHEN r.body->>'workerId'=request->>'workerId' AND r.body->>'status'='running' THEN r.body->>'startedAt' ELSE pg_catalog.now()::text END,'attemptedBy',pg_catalog.jsonb_build_array(request->>'workerId'))
+    WHERE r.bucket='jobs' AND r.id=wanted AND ((r.body->>'status' IN ('pending','scheduled','available','retryable') AND (r.body->>'scheduledAt')::timestamptz<=pg_catalog.now()) OR (r.body->>'status'='running' AND ((r.body->>'leaseExpiresAt')::timestamptz<=pg_catalog.now() OR r.body->>'workerId'=request->>'workerId'))) RETURNING r.body INTO value;
+    RETURN pg_catalog.jsonb_build_object('items',CASE WHEN value IS NULL THEN '[]'::jsonb ELSE pg_catalog.jsonb_build_array(value) END);
+  END IF;
   IF action='ready' THEN
     IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='teldrive' AND table_name='files' AND column_name='kind')
       OR EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='teldrive' AND table_name='files' AND column_name='normalized_name') THEN

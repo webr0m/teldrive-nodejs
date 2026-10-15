@@ -7777,7 +7777,8 @@ components:
           $ref: "#/components/schemas/Uuid"
         token:
           type: string
-          description: Opaque public token returned only when the share is created.
+          description: Opaque public token. Repeated requests with the same policy reuse
+            an active share.
         publicUrl:
           $ref: "#/components/schemas/Uri"
         passwordProtected:
@@ -7816,6 +7817,7 @@ components:
       required:
         - id
         - fileId
+        - publicUrl
         - passwordProtected
         - downloadCount
         - permission
@@ -7825,6 +7827,10 @@ components:
           $ref: "#/components/schemas/Uuid"
         fileId:
           $ref: "#/components/schemas/Uuid"
+        publicUrl:
+          allOf:
+            - $ref: "#/components/schemas/Uri"
+          description: Reusable public URL, available only to the authenticated owner.
         passwordProtected:
           type: boolean
         expiresAt:

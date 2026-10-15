@@ -22,6 +22,7 @@ import { startFileDownload } from "@/features/files/download";
 import { FileBrowser, type FileBrowserView } from "@/features/files/file-browser";
 import type { FileContextAction } from "./file-context-menu";
 import { useFileActions } from "@/features/files/mutations";
+import { useInfiniteFilePages } from "@/features/files/queries";
 import { ShareDialog } from "@/features/files/share-dialog";
 import { useUploadStore } from "@/features/uploads/store";
 import { getQueryClient } from "@/lib/queryClient";
@@ -78,21 +79,18 @@ export function SharedFileBrowser({ mode, search, navigate }: SharedFileBrowserP
     ...$api.queryOptions("get", "/v1/shared/with-me"),
     enabled: atRoot && mode === "with-me",
   });
-  const childrenQuery = useQuery({
-    ...$api.queryOptions("get", "/v1/files", {
-      params: {
-        query: {
-          parentId: search.parentId,
-          search: search.query || undefined,
-          sort: "name",
-          order: "asc",
-          status: "active",
-          limit: 200,
-        },
-      },
-    }),
-    enabled: !atRoot,
-  });
+  const childrenQuery = useInfiniteFilePages(
+    {
+      parentId: search.parentId,
+      path: search.path,
+      q: search.query,
+      sort: "name",
+      order: "asc",
+      view: search.view,
+    },
+    "active",
+    !atRoot,
+  );
 
   useEffect(() => setSelectedKeys(new Set()), [search.parentId, search.path, search.query]);
 
@@ -106,7 +104,9 @@ export function SharedFileBrowser({ mode, search, navigate }: SharedFileBrowserP
     (file) =>
       !search.query || file.name.toLocaleLowerCase().includes(search.query.toLocaleLowerCase()),
   );
-  const files = atRoot ? rootFiles : (childrenQuery.data?.items ?? []);
+  const files = atRoot
+    ? rootFiles
+    : (childrenQuery.data?.pages.flatMap((page) => page.items) ?? []);
   const loading = atRoot
     ? mode === "with-me"
       ? sharedWithMeQuery.isPending
@@ -269,6 +269,9 @@ export function SharedFileBrowser({ mode, search, navigate }: SharedFileBrowserP
     <Page className="h-full min-h-0 gap-0 overflow-x-hidden">
       <PageContent className="flex min-h-0 flex-1 overflow-x-hidden">
         <FileBrowser
+          hasNextPage={!atRoot && Boolean(childrenQuery.hasNextPage)}
+          isLoadingMore={childrenQuery.isFetchingNextPage}
+          onLoadMore={() => void childrenQuery.fetchNextPage()}
           files={files}
           path={search.path}
           rootLabel={rootLabel}
@@ -306,7 +309,12 @@ export function SharedFileBrowser({ mode, search, navigate }: SharedFileBrowserP
                     setRenameName(file.name);
                   },
                 });
-                actions.push({ id: "share", label: t("Compartir"), run: () => setShareFile(file) });
+                if (mode === "shared")
+                  actions.push({
+                    id: "share",
+                    label: t("Compartir"),
+                    run: () => setShareFile(file),
+                  });
               }
             }
             return actions;

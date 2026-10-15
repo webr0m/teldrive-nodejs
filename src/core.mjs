@@ -77,6 +77,14 @@ export class Store {
     finally { this.inTransaction = false; }
   }
   close() { this.db.close(); }
+  claimJob(jobId, workerId, leaseSeconds) {
+    return this.transaction(() => {
+      const job=this.get('jobs',jobId);if(!job)return;
+      const renewing=job.status==='running'&&job.workerId===workerId;
+      if (!renewing && !(job.status==='running'&&expired(job.leaseExpiresAt)) && !(['pending','scheduled','available','retryable'].includes(job.status)&&expired(job.scheduledAt))) return;
+      if(!renewing){job.attempt++;job.startedAt=now();job.attemptedBy=[workerId];}job.status='running';job.workerId=workerId;job.leaseExpiresAt=expires(leaseSeconds*1000);this.put('jobs',job);return job;
+    });
+  }
   ready() { this.db.prepare('SELECT 1').get(); }
 }
 export class Locks {

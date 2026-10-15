@@ -87,6 +87,7 @@ export class Catalog {
   spam(userId, fileId) {
     const file = this.get(userId, fileId, true), ids = this.descendants(userId, fileId);
     for (const share of this.store.list('shares', userId)) if (ids.has(share.fileId) && !share.revokedAt) { share.revokedAt = now(); this.store.put('shares', share); }
+    for (const grant of this.store.list('grants', userId)) if (ids.has(grant.fileId) && !grant.revokedAt) { grant.revokedAt = now(); this.store.put('grants', grant); }
     file.status = 'spam'; return this.save(file);
   }
   restore(userId, fileId) {

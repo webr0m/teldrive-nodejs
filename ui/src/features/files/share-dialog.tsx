@@ -44,7 +44,9 @@ export function ShareDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const account = useCurrentUser();
-  const supportsGrants = (account.data.capabilities as readonly string[]).includes("files.manageGrants");
+  const supportsGrants = (account.data.capabilities as readonly string[]).includes(
+    "files.manageGrants",
+  );
   const fileId = file?.id ?? "00000000-0000-0000-0000-000000000000";
   const [peopleSearch, setPeopleSearch] = useState("");
   const deferredPeopleSearch = useDeferredValue(peopleSearch.trim());
@@ -55,7 +57,6 @@ export function ShareDialog({
   const [peopleDuration, setPeopleDuration] = useState("1d");
   const [linkExpirationMode, setLinkExpirationMode] = useState<ExpirationMode>("never");
   const [linkDuration, setLinkDuration] = useState("1d");
-  const [createdUrl, setCreatedUrl] = useState("");
 
   useEffect(() => {
     setPeopleSearch("");
@@ -66,7 +67,6 @@ export function ShareDialog({
     setPeopleDuration("1d");
     setLinkExpirationMode("never");
     setLinkDuration("1d");
-    setCreatedUrl("");
   }, [file?.id]);
 
   const grantsQuery = useQuery({
@@ -87,6 +87,12 @@ export function ShareDialog({
     }),
     enabled: Boolean(file) && supportsGrants && deferredPeopleSearch.length >= 2,
   });
+  const hasReusableLink = linksQuery.data?.items.some(
+    (link) =>
+      !link.revokedAt &&
+      (!link.expiresAt || Date.parse(link.expiresAt) > Date.now()) &&
+      (link.maxDownloads === undefined || link.downloadCount < link.maxDownloads),
+  );
 
   const createGrant = $api.useMutation("post", "/v1/files/{fileId}/grants");
   const updateGrant = $api.useMutation("patch", "/v1/grants/{grantId}");
@@ -100,12 +106,7 @@ export function ShareDialog({
         params: { path: { fileId } },
       }).queryKey,
     });
-  const refreshLinks = () =>
-    getQueryClient().invalidateQueries({
-      queryKey: $api.queryOptions("get", "/v1/files/{fileId}/shares", {
-        params: { path: { fileId } },
-      }).queryKey,
-    });
+  const refreshLinks = () => linksQuery.refetch();
 
   const addPerson = async (userId: number) => {
     if (!file) return;
@@ -143,14 +144,21 @@ export function ShareDialog({
         },
       });
       const publicUrl = new URL(result.publicUrl, window.location.origin).toString();
-      setCreatedUrl(publicUrl);
-      await copyText(publicUrl);
       await refreshLinks();
-      toast.success(t("Enlace público creado y copiado"));
+      await copyPublicLink(publicUrl);
     } catch (error) {
       toast.error(t("No se pudo crear el enlace público"), {
         description: userMessage(error),
       });
+    }
+  };
+
+  const copyPublicLink = async (url: string) => {
+    try {
+      await copyText(new URL(url, window.location.origin).toString());
+      toast.success(t("Enlace copiado"));
+    } catch (error) {
+      toast.error(t("No se pudo copiar el enlace"), { description: userMessage(error) });
     }
   };
 
@@ -159,7 +167,7 @@ export function ShareDialog({
       open={Boolean(file)}
       onOpenChange={onOpenChange}
       title={file ? t("Compartir {0}", [file.name]) : t("Compartir elemento")}
-      description={t("Manage who can access this item and create public links.")}
+      description={t("Administra el acceso y recupera los enlaces para compartir este elemento.")}
       size="lg"
       className="sm:w-[min(92vw,46rem)]"
       bodyClassName="py-4"
@@ -170,168 +178,170 @@ export function ShareDialog({
       }
     >
       <div className="grid gap-5">
-        {supportsGrants ? <section className="grid gap-4 rounded-2xl border border-border bg-default/10 p-4">
-          <div>
-            <h3 className="text-sm font-semibold">{t("Personas con acceso")}</h3>
-            <p className="mt-1 text-xs text-muted">
-              {t("El acceso se aplica a este elemento y su contenido.")}
-            </p>
-          </div>
-
-          <TextField value={peopleSearch} onChange={setPeopleSearch}>
-            <Label>{t("Add a user")}</Label>
-            <Input placeholder={t("Buscar por nombre, usuario o ID de Telegram")} />
-          </TextField>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <ControlField label={t("Permiso")}>
-              <PermissionPicker value={peoplePermission} onChange={setPeoplePermission} />
-            </ControlField>
-            <ControlField label={t("Vencimiento")}>
-              <ExpirationPicker
-                mode={peopleExpirationMode}
-                duration={peopleDuration}
-                onModeChange={setPeopleExpirationMode}
-                onDurationChange={setPeopleDuration}
-              />
-            </ControlField>
-          </div>
-
-          {deferredPeopleSearch.length >= 2 ? (
-            usersQuery.isPending ? (
-              <div className="flex justify-center py-3">
-                <Spinner size="sm" />
-              </div>
-            ) : usersQuery.data?.length ? (
-              <div className="grid gap-1 rounded-xl border border-border bg-surface p-1">
-                {usersQuery.data.map((user) => (
-                  <Button
-                    key={user.userId}
-                    variant="ghost"
-                    className="h-auto justify-start px-3 py-2 text-left"
-                    isDisabled={createGrant.isPending}
-                    onPress={() => void addPerson(user.userId)}
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium">
-                        {user.displayName?.trim() ||
-                          user.username?.trim() ||
-                          t("Usuario {0}", [user.userId])}
-                      </span>
-                      <span className="block truncate text-xs text-muted">
-                        {user.username ? `@${user.username} · ` : ""}
-                        {t("Telegram ID") + " "}
-                        {user.userId}
-                      </span>
-                    </span>
-                  </Button>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-muted">{t("No se encontraron usuarios.")}</p>
-            )
-          ) : null}
-
-          <div className="grid min-h-12 content-start gap-2">
-            {grantsQuery.isPending ? (
-              <div className="flex justify-center py-3">
-                <Spinner size="sm" />
-              </div>
-            ) : grantsQuery.data?.length ? (
-              grantsQuery.data.map((grant) => (
-                <div
-                  key={grant.id}
-                  className="flex items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">
-                      {grant.granteeDisplayName?.trim() ||
-                        grant.granteeUsername?.trim() ||
-                        t("Usuario {0}", [grant.granteeUserId])}
-                    </p>
-                    <p className="truncate text-xs text-muted">
-                      {grant.granteeUsername ? `@${grant.granteeUsername} · ` : ""}
-                      {t("Telegram ID") + " "}
-                      {grant.granteeUserId}
-                    </p>
-                    <p className="mt-0.5 truncate text-xs text-muted">
-                      {grant.expiresAt
-                        ? t("Vence {0}", [new Date(grant.expiresAt).toLocaleString()])
-                        : t("Sin vencimiento")}
-                    </p>
-                  </div>
-                  <Chip variant="tertiary">
-                    {grant.permission === "read" ? t("Lector") : t("Editor")}
-                  </Chip>
-                  <Dropdown>
-                    <Button
-                      isIconOnly
-                      size="sm"
-                      variant="ghost"
-                      aria-label={t("Acciones de acceso")}
-                    >
-                      <span className="text-lg leading-none">⋯</span>
-                    </Button>
-                    <Dropdown.Popover className="min-w-48">
-                      <Dropdown.Menu
-                        aria-label={t("Acciones de acceso")}
-                        onAction={(key) => {
-                          if (key === "permission") {
-                            void (async () => {
-                              try {
-                                await updateGrant.mutateAsync({
-                                  params: { path: { grantId: grant.id } },
-                                  body: {
-                                    permission: grant.permission === "read" ? "edit" : "read",
-                                    clearExpiresAt: false,
-                                  },
-                                });
-                                await refreshGrants();
-                              } catch (error) {
-                                toast.error(t("No se pudo cambiar el permiso"), {
-                                  description: userMessage(error),
-                                });
-                              }
-                            })();
-                          }
-                          if (key === "remove") {
-                            void (async () => {
-                              try {
-                                await revokeGrant.mutateAsync({
-                                  params: { path: { grantId: grant.id } },
-                                });
-                                await refreshGrants();
-                                toast.success(t("Acceso eliminado"));
-                              } catch (error) {
-                                toast.error(t("No se pudo eliminar el acceso"), {
-                                  description: userMessage(error),
-                                });
-                              }
-                            })();
-                          }
-                        }}
-                      >
-                        <Dropdown.Item id="permission" textValue={t("Cambiar permiso")}>
-                          <Label>
-                            {t("Make") + " "}
-                            {grant.permission === "read" ? "editor" : "viewer"}
-                          </Label>
-                        </Dropdown.Item>
-                        <Dropdown.Item id="remove" textValue={t("Eliminar acceso")}>
-                          <Label>{t("Eliminar acceso")}</Label>
-                        </Dropdown.Item>
-                      </Dropdown.Menu>
-                    </Dropdown.Popover>
-                  </Dropdown>
-                </div>
-              ))
-            ) : (
-              <p className="flex min-h-12 items-center text-xs text-muted">
-                {t("No Teldrive users have access yet.")}
+        {supportsGrants ? (
+          <section className="grid gap-4 rounded-2xl border border-border bg-default/10 p-4">
+            <div>
+              <h3 className="text-sm font-semibold">{t("Personas con acceso")}</h3>
+              <p className="mt-1 text-xs text-muted">
+                {t("El acceso se aplica a este elemento y su contenido.")}
               </p>
-            )}
-          </div>
-        </section> : null}
+            </div>
+
+            <TextField value={peopleSearch} onChange={setPeopleSearch}>
+              <Label>{t("Añadir un usuario")}</Label>
+              <Input placeholder={t("Buscar por nombre, usuario o ID de Telegram")} />
+            </TextField>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ControlField label={t("Permiso")}>
+                <PermissionPicker value={peoplePermission} onChange={setPeoplePermission} />
+              </ControlField>
+              <ControlField label={t("Vencimiento")}>
+                <ExpirationPicker
+                  mode={peopleExpirationMode}
+                  duration={peopleDuration}
+                  onModeChange={setPeopleExpirationMode}
+                  onDurationChange={setPeopleDuration}
+                />
+              </ControlField>
+            </div>
+
+            {deferredPeopleSearch.length >= 2 ? (
+              usersQuery.isPending ? (
+                <div className="flex justify-center py-3">
+                  <Spinner size="sm" />
+                </div>
+              ) : usersQuery.data?.length ? (
+                <div className="grid gap-1 rounded-xl border border-border bg-surface p-1">
+                  {usersQuery.data.map((user) => (
+                    <Button
+                      key={user.userId}
+                      variant="ghost"
+                      className="h-auto justify-start px-3 py-2 text-left"
+                      isDisabled={createGrant.isPending}
+                      onPress={() => void addPerson(user.userId)}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium">
+                          {user.displayName?.trim() ||
+                            user.username?.trim() ||
+                            t("Usuario {0}", [user.userId])}
+                        </span>
+                        <span className="block truncate text-xs text-muted">
+                          {user.username ? `@${user.username} · ` : ""}
+                          {t("Telegram ID") + " "}
+                          {user.userId}
+                        </span>
+                      </span>
+                    </Button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted">{t("No se encontraron usuarios.")}</p>
+              )
+            ) : null}
+
+            <div className="grid min-h-12 content-start gap-2">
+              {grantsQuery.isPending ? (
+                <div className="flex justify-center py-3">
+                  <Spinner size="sm" />
+                </div>
+              ) : grantsQuery.data?.length ? (
+                grantsQuery.data.map((grant) => (
+                  <div
+                    key={grant.id}
+                    className="flex items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">
+                        {grant.granteeDisplayName?.trim() ||
+                          grant.granteeUsername?.trim() ||
+                          t("Usuario {0}", [grant.granteeUserId])}
+                      </p>
+                      <p className="truncate text-xs text-muted">
+                        {grant.granteeUsername ? `@${grant.granteeUsername} · ` : ""}
+                        {t("Telegram ID") + " "}
+                        {grant.granteeUserId}
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-muted">
+                        {grant.expiresAt
+                          ? t("Vence {0}", [new Date(grant.expiresAt).toLocaleString()])
+                          : t("Sin vencimiento")}
+                      </p>
+                    </div>
+                    <Chip variant="tertiary">
+                      {grant.permission === "read" ? t("Lector") : t("Editor")}
+                    </Chip>
+                    <Dropdown>
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        variant="ghost"
+                        aria-label={t("Acciones de acceso")}
+                      >
+                        <span className="text-lg leading-none">⋯</span>
+                      </Button>
+                      <Dropdown.Popover className="min-w-48">
+                        <Dropdown.Menu
+                          aria-label={t("Acciones de acceso")}
+                          onAction={(key) => {
+                            if (key === "permission") {
+                              void (async () => {
+                                try {
+                                  await updateGrant.mutateAsync({
+                                    params: { path: { grantId: grant.id } },
+                                    body: {
+                                      permission: grant.permission === "read" ? "edit" : "read",
+                                      clearExpiresAt: false,
+                                    },
+                                  });
+                                  await refreshGrants();
+                                } catch (error) {
+                                  toast.error(t("No se pudo cambiar el permiso"), {
+                                    description: userMessage(error),
+                                  });
+                                }
+                              })();
+                            }
+                            if (key === "remove") {
+                              void (async () => {
+                                try {
+                                  await revokeGrant.mutateAsync({
+                                    params: { path: { grantId: grant.id } },
+                                  });
+                                  await refreshGrants();
+                                  toast.success(t("Acceso eliminado"));
+                                } catch (error) {
+                                  toast.error(t("No se pudo eliminar el acceso"), {
+                                    description: userMessage(error),
+                                  });
+                                }
+                              })();
+                            }
+                          }}
+                        >
+                          <Dropdown.Item id="permission" textValue={t("Cambiar permiso")}>
+                            <Label>
+                              {t("Make") + " "}
+                              {grant.permission === "read" ? "editor" : "viewer"}
+                            </Label>
+                          </Dropdown.Item>
+                          <Dropdown.Item id="remove" textValue={t("Eliminar acceso")}>
+                            <Label>{t("Eliminar acceso")}</Label>
+                          </Dropdown.Item>
+                        </Dropdown.Menu>
+                      </Dropdown.Popover>
+                    </Dropdown>
+                  </div>
+                ))
+              ) : (
+                <p className="flex min-h-12 items-center text-xs text-muted">
+                  {t("Todavía no hay usuarios con acceso.")}
+                </p>
+              )}
+            </div>
+          </section>
+        ) : null}
 
         <section className="grid gap-4 rounded-2xl border border-border bg-default/10 p-4">
           <div>
@@ -343,67 +353,63 @@ export function ShareDialog({
             </p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <ControlField label={t("Permiso")}>
-              <PermissionPicker value={linkPermission} onChange={setLinkPermission} />
-            </ControlField>
-            <ControlField label={t("Vencimiento")}>
-              <ExpirationPicker
-                mode={linkExpirationMode}
-                duration={linkDuration}
-                onModeChange={setLinkExpirationMode}
-                onDurationChange={setLinkDuration}
-              />
-            </ControlField>
-          </div>
+          {!hasReusableLink ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <ControlField label={t("Permiso")}>
+                  <PermissionPicker
+                    value={linkPermission}
+                    onChange={setLinkPermission}
+                    allowEdit={(account.data.capabilities as readonly string[]).includes(
+                      "shares.edit",
+                    )}
+                  />
+                </ControlField>
+                <ControlField label={t("Vencimiento")}>
+                  <ExpirationPicker
+                    mode={linkExpirationMode}
+                    duration={linkDuration}
+                    onModeChange={setLinkExpirationMode}
+                    onDurationChange={setLinkDuration}
+                  />
+                </ControlField>
+              </div>
 
-          <TextField value={linkPassword} onChange={setLinkPassword}>
-            <Label>{t("Contraseña")}</Label>
-            <Input type="password" placeholder={t("Contraseña opcional")} />
-          </TextField>
+              <TextField value={linkPassword} onChange={setLinkPassword}>
+                <Label>{t("Contraseña")}</Label>
+                <Input type="password" placeholder={t("Contraseña opcional")} />
+              </TextField>
 
-          <div>
-            <Button
-              variant="primary"
-              isDisabled={createLink.isPending}
-              onPress={() => void createPublicLink()}
-            >
-              {t("Crear enlace público")}
-            </Button>
-          </div>
-
-          {createdUrl ? (
-            <div className="flex gap-2 rounded-xl border border-border bg-surface p-3">
-              <Input readOnly value={createdUrl} className="min-w-0 flex-1" />
-              <Button
-                size="sm"
-                variant="secondary"
-                onPress={async () => {
-                  try {
-                    await copyText(createdUrl);
-                    toast.success(t("Enlace copiado"));
-                  } catch (error) {
-                    toast.error(t("No se pudo copiar el enlace"), {
-                      description: userMessage(error),
-                    });
-                  }
-                }}
-              >
-                {t("Copiar")}
-              </Button>
-            </div>
-          ) : null}
+              <div>
+                <Button
+                  variant="primary"
+                  isDisabled={createLink.isPending || linksQuery.isPending || linksQuery.isError}
+                  onPress={() => void createPublicLink()}
+                >
+                  {t("Crear enlace público")}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-muted">
+              {t("Puedes volver a copiar este enlace cada vez que quieras compartirlo.")}
+            </p>
+          )}
 
           <div className="grid min-h-12 content-start gap-2">
             {linksQuery.isPending ? (
               <div className="flex justify-center py-3">
                 <Spinner size="sm" />
               </div>
+            ) : linksQuery.isError ? (
+              <Button variant="secondary" onPress={() => void linksQuery.refetch()}>
+                {t("Reintentar cargar los enlaces")}
+              </Button>
             ) : linksQuery.data?.items.length ? (
               linksQuery.data.items.map((link) => (
                 <div
                   key={link.id}
-                  className="flex items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5"
+                  className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">
@@ -422,6 +428,13 @@ export function ShareDialog({
                   <Chip variant="tertiary">
                     {link.permission === "read" ? t("Lector") : t("Editor")}
                   </Chip>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onPress={() => void copyPublicLink(link.publicUrl)}
+                  >
+                    {t("Copiar enlace")}
+                  </Button>
                   <Dropdown>
                     <Button
                       isIconOnly
@@ -457,11 +470,17 @@ export function ShareDialog({
                       </Dropdown.Menu>
                     </Dropdown.Popover>
                   </Dropdown>
+                  <Input
+                    aria-label={t("Enlace público")}
+                    readOnly
+                    value={new URL(link.publicUrl, window.location.origin).toString()}
+                    className="w-full"
+                  />
                 </div>
               ))
             ) : (
               <p className="flex min-h-12 items-center text-xs text-muted">
-                {t("No public links exist for this item.")}
+                {t("Este elemento todavía no tiene enlaces públicos.")}
               </p>
             )}
           </div>
@@ -483,9 +502,11 @@ function ControlField({ label, children }: { label: string; children: ReactNode 
 function PermissionPicker({
   value,
   onChange,
+  allowEdit = true,
 }: {
   value: Permission;
   onChange: (value: Permission) => void;
+  allowEdit?: boolean;
 }) {
   return (
     <Select
@@ -503,9 +524,11 @@ function PermissionPicker({
           <ListBox.Item id="read" textValue={t("Lector")}>
             {t("Lector")}
           </ListBox.Item>
-          <ListBox.Item id="edit" textValue={t("Editor")}>
-            {t("Editor")}
-          </ListBox.Item>
+          {allowEdit ? (
+            <ListBox.Item id="edit" textValue={t("Editor")}>
+              {t("Editor")}
+            </ListBox.Item>
+          ) : null}
         </ListBox>
       </Select.Popover>
     </Select>

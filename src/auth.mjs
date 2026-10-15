@@ -11,7 +11,7 @@ export function cookies(req) {
 export class Auth {
   constructor(store, config, telegram) { this.store = store; this.config = config; this.telegram = telegram; this.box = new CryptoBox(config.key); }
   user(userId) { const u = this.store.get('users', userId); if (!u || u.disabled) fail(401, 'invalid_session'); return u; }
-  profile(u) { return { userId: Number(u.id), displayName: u.displayName, username: u.username, premium: !!u.premium, role: u.role, capabilities: ['files', 'uploads', 'shares', ...(['owner', 'admin'].includes(u.role) ? ['system.manageUsers'] : [])], createdAt: u.createdAt }; }
+  profile(u) { return { userId: Number(u.id), displayName: u.displayName, username: u.username, premium: !!u.premium, role: u.role, capabilities: ['files', 'uploads', 'shares', 'files.manageGrants', ...(['owner', 'admin'].includes(u.role) ? ['system.manageUsers','system.manageJobs'] : [])], createdAt: u.createdAt }; }
   finish(me, sessionString) {
     const userId = String(me.id);
     if (this.config.allowedUsers.length && !this.config.allowedUsers.includes(userId) && !this.config.allowedUsers.some(v => me.username && v.replace(/^@/, '').toLowerCase() === me.username.toLowerCase())) fail(403, 'user_not_allowed');

@@ -139,7 +139,7 @@ export function QuarantinePage({ spam = false }: { spam?: boolean }) {
               )
             : spam
               ? t(
-                  "Elementos puestos en cuarentena durante 30 días. En los recibidos se retira tu acceso sin borrar el original del propietario. En los propios se retiran los enlaces; restaurarlos no vuelve a compartirlos.",
+                  "En los elementos recibidos se retira tu acceso sin borrar el original del propietario. En los propios se retiran los enlaces y permisos; restaurarlos no vuelve a compartirlos.",
                 )
               : t("Restaura los elementos eliminados o elimínalos definitivamente de Teldrive.")
         }
@@ -247,7 +247,7 @@ export function QuarantinePage({ spam = false }: { spam?: boolean }) {
             </Button>
           </p>
         ) : null}
-        {(query.isPending || (spam && incoming.isPending)) && validRange ? (
+        {(query.isLoading || (spam && supportsGrants && incoming.isLoading)) && validRange ? (
           <Spinner aria-label={t("Cargando {0}", [title])} />
         ) : files.length === 0 && !query.isError && !(spam && incoming.isError) && validRange ? (
           <EmptyState

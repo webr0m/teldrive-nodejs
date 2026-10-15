@@ -17,6 +17,7 @@ import type { components } from "@/api/schema";
 import { $api as api, fetchClient } from "@/api/client";
 import { queryClient } from "@/api/query-client";
 import { invalidateTaskQueries } from "@/api/tasks";
+import { userMessage } from "@/api/errors";
 
 type TaskOut = components["schemas"]["Job"];
 type TaskAttemptError = components["schemas"]["JobAttemptError"];
@@ -70,42 +71,52 @@ function TaskDetailPage() {
 
   const retry = async () => {
     setRetrying(true);
-    const { error } = await fetchClient.POST("/v1/jobs/{jobId}/retry", {
-      params: { path: { jobId: id } },
-    });
-    setRetrying(false);
-    if (error) {
-      toast.error(t("No se pudo reintentar la tarea"));
-      return;
+    try {
+      const { error } = await fetchClient.POST("/v1/jobs/{jobId}/retry", {
+        params: { path: { jobId: id } },
+      });
+      if (error) {
+        toast.error(t("No se pudo reintentar la tarea"));
+        return;
+      }
+      toast.success(t("Tarea programada para reintentar"));
+      await invalidateTaskQueries(qc, id);
+    } catch (error) {
+      toast.error(t("No se pudo reintentar la tarea"), { description: userMessage(error) });
+    } finally {
+      setRetrying(false);
     }
-    toast.success(t("Tarea programada para reintentar"));
-    await invalidateTaskQueries(qc, id);
   };
 
   const remove = async () => {
     setDeleting(true);
-    const { error } = ACTIVE_STATES.includes(task.status)
-      ? await fetchClient.POST("/v1/jobs/{jobId}/cancel", { params: { path: { jobId: id } } })
-      : await fetchClient.DELETE("/v1/jobs/{jobId}", { params: { path: { jobId: id } } });
-    setDeleting(false);
-    if (error) {
-      toast.error(
+    try {
+      const { error } = ACTIVE_STATES.includes(task.status)
+        ? await fetchClient.POST("/v1/jobs/{jobId}/cancel", { params: { path: { jobId: id } } })
+        : await fetchClient.DELETE("/v1/jobs/{jobId}", { params: { path: { jobId: id } } });
+      if (error) {
+        toast.error(
+          ACTIVE_STATES.includes(task.status)
+            ? t("No se pudo cancelar la tarea")
+            : t("No se pudo eliminar la tarea"),
+        );
+        return;
+      }
+      toast.success(
         ACTIVE_STATES.includes(task.status)
-          ? t("No se pudo cancelar la tarea")
-          : t("No se pudo eliminar la tarea"),
+          ? t("Cancelación de tarea solicitada")
+          : t("Tarea eliminada"),
       );
-      return;
+      await invalidateTaskQueries(qc, id);
+      navigate({
+        to: "/tasks",
+        search: { status: "running", query: "" },
+      });
+    } catch (error) {
+      toast.error(t("No se pudo actualizar la tarea"), { description: userMessage(error) });
+    } finally {
+      setDeleting(false);
     }
-    toast.success(
-      ACTIVE_STATES.includes(task.status)
-        ? t("Cancelación de tarea solicitada")
-        : t("Tarea eliminada"),
-    );
-    await invalidateTaskQueries(qc, id);
-    navigate({
-      to: "/tasks",
-      search: { status: "running", query: "" },
-    });
   };
 
   const refresh = () => {

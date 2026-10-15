@@ -2231,7 +2231,7 @@ export interface components {
         ShareCreated: {
             id: components["schemas"]["Uuid"];
             fileId: components["schemas"]["Uuid"];
-            /** @description Opaque public token returned only when the share is created. */
+            /** @description Opaque public token. Repeated requests with the same policy reuse an active share. */
             token: string;
             publicUrl: components["schemas"]["Uri"];
             passwordProtected: boolean;
@@ -2256,6 +2256,8 @@ export interface components {
         ShareSummary: {
             id: components["schemas"]["Uuid"];
             fileId: components["schemas"]["Uuid"];
+            /** @description Reusable public URL, available only to the authenticated owner. */
+            publicUrl: components["schemas"]["Uri"];
             passwordProtected: boolean;
             /** Format: date-time */
             expiresAt?: string;

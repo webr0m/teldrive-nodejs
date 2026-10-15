@@ -16,6 +16,7 @@ import type { components } from "@/api/schema";
 import { $api as api, fetchClient } from "@/api/client";
 import { queryClient } from "@/api/query-client";
 import { invalidateTaskQueries } from "@/api/tasks";
+import { userMessage } from "@/api/errors";
 
 type TaskOut = components["schemas"]["Job"];
 type TaskCounts = components["schemas"]["JobStatistics"];
@@ -210,64 +211,70 @@ function TasksPage() {
 
   const retryTask = async (task: TaskOut) => {
     setRetryingId(task.id);
-    const { error } = await fetchClient.POST("/v1/jobs/{jobId}/retry", {
-      params: { path: { jobId: task.id } },
-    });
-    setRetryingId(null);
-    if (error) {
-      toast.error(t("No se pudo reintentar la tarea"));
-      return;
+    try {
+      await fetchClient.POST("/v1/jobs/{jobId}/retry", { params: { path: { jobId: task.id } } });
+      toast.success(t("Tarea programada para reintentar"));
+      refreshTasks();
+    } catch (error) {
+      toast.error(t("No se pudo reintentar la tarea"), { description: userMessage(error) });
+    } finally {
+      setRetryingId(null);
     }
-    toast.success(t("Tarea programada para reintentar"));
-    refreshTasks();
   };
 
   const deleteTask = async (task: TaskOut) => {
     setDeletingId(task.id);
-    const { error } = CANCELLABLE_STATUSES.includes(task.status)
-      ? await fetchClient.POST("/v1/jobs/{jobId}/cancel", {
-          params: { path: { jobId: task.id } },
-        })
-      : await fetchClient.DELETE("/v1/jobs/{jobId}", {
-          params: { path: { jobId: task.id } },
-        });
-    setDeletingId(null);
-    if (error) {
+    try {
+      await (CANCELLABLE_STATUSES.includes(task.status)
+        ? fetchClient.POST("/v1/jobs/{jobId}/cancel", {
+            params: { path: { jobId: task.id } },
+          })
+        : fetchClient.DELETE("/v1/jobs/{jobId}", {
+            params: { path: { jobId: task.id } },
+          }));
+      toast.success(
+        CANCELLABLE_STATUSES.includes(task.status)
+          ? t("Cancelación de tarea solicitada")
+          : t("Tarea eliminada"),
+      );
+      refreshTasks();
+    } catch (error) {
       toast.error(
         CANCELLABLE_STATUSES.includes(task.status)
           ? t("No se pudo cancelar la tarea")
           : t("No se pudo eliminar la tarea"),
+        { description: userMessage(error) },
       );
-      return;
+    } finally {
+      setDeletingId(null);
     }
-    toast.success(
-      CANCELLABLE_STATUSES.includes(task.status)
-        ? t("Cancelación de tarea solicitada")
-        : t("Tarea eliminada"),
-    );
-    refreshTasks();
   };
 
   const cleanTasks = async () => {
     if (!cleanupStatus) return;
     setCleaning(true);
-    const { data: response, error } = await fetchClient.DELETE("/v1/jobs/purge", {
-      params: { query: { status: cleanupStatus } },
-    });
-    setCleaning(false);
-    if (error) {
-      toast.error(t("No se pudieron limpiar las tareas {0} tareas", [cleanupStatus]));
-      return;
-    }
+    try {
+      const { data: response, error } = await fetchClient.DELETE("/v1/jobs/purge", {
+        params: { query: { status: cleanupStatus } },
+      });
+      if (error) {
+        toast.error(t("No se pudieron limpiar las tareas {0} tareas", [cleanupStatus]));
+        return;
+      }
 
-    const status = cleanupStatus;
-    setCleanupStatus(null);
-    setCursor(undefined);
-    setCursorHistory([]);
-    toast.success(
-      t("Eliminadas {0} {1} tarea{2}", [response.count, status, response.count === 1 ? "" : "s"]),
-    );
-    refreshTasks();
+      const status = cleanupStatus;
+      setCleanupStatus(null);
+      setCursor(undefined);
+      setCursorHistory([]);
+      toast.success(
+        t("Eliminadas {0} {1} tarea{2}", [response.count, status, response.count === 1 ? "" : "s"]),
+      );
+      refreshTasks();
+    } catch (error) {
+      toast.error(t("No se pudieron limpiar las tareas"), { description: userMessage(error) });
+    } finally {
+      setCleaning(false);
+    }
   };
 
   return (
@@ -570,17 +577,26 @@ function QueueManager({ queues, onChanged }: { queues: TaskQueueOut[]; onChanged
 
   const toggleQueue = async (queue: TaskQueueOut) => {
     setPendingQueue(queue.name);
-    const endpoint = queue.paused
-      ? "/v1/jobs/queues/{queue}/resume"
-      : "/v1/jobs/queues/{queue}/pause";
-    const { error } = await fetchClient.POST(endpoint, { params: { path: { queue: queue.name } } });
-    setPendingQueue(null);
-    if (error) {
-      toast.error(t("No se pudo {0} {1}", [queue.paused ? "reanudar" : "pausar", queue.name]));
-      return;
+    try {
+      const endpoint = queue.paused
+        ? "/v1/jobs/queues/{queue}/resume"
+        : "/v1/jobs/queues/{queue}/pause";
+      const { error } = await fetchClient.POST(endpoint, {
+        params: { path: { queue: queue.name } },
+      });
+      if (error) {
+        toast.error(t("No se pudo {0} {1}", [queue.paused ? "reanudar" : "pausar", queue.name]));
+        return;
+      }
+      toast.success(`${queue.name} ${queue.paused ? "reanudada" : "en pausa"}`);
+      onChanged();
+    } catch (error) {
+      toast.error(t("No se pudo cambiar el estado de la cola"), {
+        description: userMessage(error),
+      });
+    } finally {
+      setPendingQueue(null);
     }
-    toast.success(`${queue.name} ${queue.paused ? "reanudada" : "en pausa"}`);
-    onChanged();
   };
 
   return (
@@ -595,7 +611,7 @@ function QueueManager({ queues, onChanged }: { queues: TaskQueueOut[]; onChanged
               {t("Colas de procesos")}
             </Popover.Heading>
             <p className="mt-0.5 text-xs text-muted">
-              {t("Pausa o reanuda colas de River sin detener los procesos.")}
+              {t("Pausa o reanuda las colas de tareas en segundo plano.")}
             </p>
           </div>
           <div className="max-h-80 divide-y divide-border overflow-y-auto">
@@ -631,7 +647,7 @@ function QueueManager({ queues, onChanged }: { queues: TaskQueueOut[]; onChanged
               ))
             ) : (
               <div className="px-4 py-8 text-center text-sm text-muted">
-                {t("No hay colas de River activas.")}
+                {t("No hay colas activas.")}
               </div>
             )}
           </div>

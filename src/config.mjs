@@ -23,6 +23,8 @@ export function config(env = process.env) {
     botRetrySeconds: integer('BOT_RETRY_SECONDS', 60, 1, 86400),
     botClientPoolSize: integer('BOT_CLIENT_POOL_SIZE', 2, 0, 64), botClientIdleSeconds: integer('BOT_CLIENT_IDLE_SECONDS', 30, 1, 600),
     uploadRetryAttempts: integer('UPLOAD_RETRY_ATTEMPTS', 5, 0, 10),
+    jobPollSeconds: integer('JOB_POLL_SECONDS', 10, 1, 300), jobLeaseSeconds: integer('JOB_LEASE_SECONDS', 300, 30, 3600),
+    jobBatchLimit: integer('JOB_BATCH_LIMIT', 1000, 1, 10000), pendingRetentionDays: integer('PENDING_RETENTION_DAYS', 30, 1, 3650),
     playbackTtlMinutes: integer('PLAYBACK_TTL_MINUTES', 60, 5, 1440),
     mediaEnabled: env.MEDIA_ENABLED !== 'false', ffmpegPath: env.FFMPEG_PATH, ffprobePath: env.FFPROBE_PATH,
     mediaCaFile: env.MEDIA_CA_FILE,

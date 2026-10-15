@@ -34,7 +34,9 @@ const GROUPS: {
       {
         key: "teldrive_pending_file_purge",
         label: t("Purgar archivos pendientes"),
-        description: t("Elimina los archivos pendientes vencidos y sus datos en Telegram."),
+        description: t(
+          "Elimina los archivos pendientes cuya retención haya vencido y sus datos en Telegram.",
+        ),
         defaultQueue: "maintenance",
       },
     ],
@@ -217,7 +219,7 @@ export function TaskLauncher({ onQueued, onClose }: { onQueued: () => void; onCl
                       {(field) => (
                         <field.TextField
                           label={t("Cola")}
-                          description={t("Cola de River utilizada para esta tarea.")}
+                          description={t("Cola utilizada para esta tarea.")}
                         />
                       )}
                     </form.AppField>

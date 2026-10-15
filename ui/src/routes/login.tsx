@@ -2,7 +2,7 @@ import { t } from "@/lib/localization";
 import { LanguageSelector } from "@/lib/localization";
 import { Button, Card, Description, Input, Label, Spinner, Tabs, TextField } from "@heroui/react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import PhoneIcon from "~icons/gravity-ui/person";
@@ -57,6 +57,9 @@ function LoginPage() {
   const startQr = $api.useMutation("post", "/v1/auth/telegram/qr/start");
   const pollQr = $api.useMutation("post", "/v1/auth/cookie/telegram/qr/poll");
   const pending = startPhone.isPending || verifyCode.isPending || verifyPassword.isPending;
+  const submitting = useRef(false);
+  const canSubmit =
+    !pending && Boolean(step === "phone" ? phone.trim() : step === "code" ? code.trim() : password);
 
   const finish = async () => {
     const query = currentUserQueryOptions();
@@ -68,6 +71,8 @@ function LoginPage() {
   };
 
   const submitPhone = async () => {
+    if (!canSubmit || submitting.current) return;
+    submitting.current = true;
     try {
       if (step === "phone") {
         const result = (await startPhone.mutateAsync({
@@ -94,6 +99,8 @@ function LoginPage() {
       if (isSession(result)) await finish();
     } catch (error) {
       toast.error(t("No se pudo iniciar sesión con Telegram"), { description: userMessage(error) });
+    } finally {
+      submitting.current = false;
     }
   };
 
@@ -195,67 +202,73 @@ function LoginPage() {
                 </Tabs.List>
               </Tabs.ListContainer>
               <Tabs.Panel id="phone" className="space-y-4 pt-4">
-                {step === "phone" && (
-                  <TextField className="grid gap-1">
-                    <Label>{t("Número de teléfono de Telegram")}</Label>
-                    <Input
-                      autoFocus
-                      placeholder="+12025550123"
-                      value={phone}
-                      onChange={(event) => setPhone(event.target.value)}
-                    />
-                    <Description>
-                      {t("Incluye el prefijo del país, por ejemplo +56912345678.")}
-                    </Description>
-                  </TextField>
-                )}
-                {step === "code" && (
-                  <TextField className="grid gap-1">
-                    <Label>{t("Código de Telegram")}</Label>
-                    <Input
-                      autoFocus
-                      inputMode="numeric"
-                      value={code}
-                      onChange={(event) => setCode(event.target.value)}
-                    />
-                  </TextField>
-                )}
-                {step === "password" && (
-                  <TextField className="grid gap-1">
-                    <Label>{t("Contraseña de verificación en dos pasos")}</Label>
-                    <Input
-                      autoFocus
-                      type="password"
-                      value={password}
-                      onChange={(event) => setPassword(event.target.value)}
-                    />
-                  </TextField>
-                )}
-                <Button
-                  className="w-full"
-                  onPress={submitPhone}
-                  isDisabled={
-                    pending ||
-                    (step === "phone" ? !phone.trim() : step === "code" ? !code.trim() : !password)
-                  }
+                <form
+                  className="space-y-4"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void submitPhone();
+                  }}
                 >
-                  {pending ? <Spinner size="sm" /> : <ShieldIcon className="size-4" />}
-                  {step === "phone" ? t("Enviar código") : t("Verificar e iniciar sesión")}
-                </Button>
-                {step !== "phone" && (
-                  <Button
-                    variant="ghost"
-                    className="w-full"
-                    onPress={() => {
-                      setStep("phone");
-                      setFlowId("");
-                      setCode("");
-                      setPassword("");
-                    }}
-                  >
-                    {t("Empezar de nuevo")}
+                  {step === "phone" && (
+                    <TextField className="grid gap-1">
+                      <Label>{t("Número de teléfono de Telegram")}</Label>
+                      <Input
+                        autoFocus
+                        type="tel"
+                        autoComplete="tel"
+                        placeholder="+12025550123"
+                        value={phone}
+                        onChange={(event) => setPhone(event.target.value)}
+                      />
+                      <Description>
+                        {t("Incluye el prefijo del país, por ejemplo +56912345678.")}
+                      </Description>
+                    </TextField>
+                  )}
+                  {step === "code" && (
+                    <TextField className="grid gap-1">
+                      <Label>{t("Código de Telegram")}</Label>
+                      <Input
+                        autoFocus
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        value={code}
+                        onChange={(event) => setCode(event.target.value)}
+                      />
+                    </TextField>
+                  )}
+                  {step === "password" && (
+                    <TextField className="grid gap-1">
+                      <Label>{t("Contraseña de verificación en dos pasos")}</Label>
+                      <Input
+                        autoFocus
+                        type="password"
+                        autoComplete="current-password"
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                      />
+                    </TextField>
+                  )}
+                  <Button className="w-full" type="submit" isDisabled={!canSubmit}>
+                    {pending ? <Spinner size="sm" /> : <ShieldIcon className="size-4" />}
+                    {step === "phone" ? t("Enviar código") : t("Verificar e iniciar sesión")}
                   </Button>
-                )}
+                  {step !== "phone" && (
+                    <Button
+                      variant="ghost"
+                      type="button"
+                      className="w-full"
+                      onPress={() => {
+                        setStep("phone");
+                        setFlowId("");
+                        setCode("");
+                        setPassword("");
+                      }}
+                    >
+                      {t("Empezar de nuevo")}
+                    </Button>
+                  )}
+                </form>
               </Tabs.Panel>
               <Tabs.Panel id="qr" className="space-y-4 pt-4">
                 <div className="grid min-h-72 place-items-center rounded-xl border border-border bg-white p-5 text-black">

@@ -44,7 +44,7 @@ test('folder paths and storage dashboard read the catalog once, and nested trash
 
 test('public playback checks ancestry without listing the drive, and spam revokes Node links permanently',()=>{
   const {catalog,file,store,reads}=fixture();file('root');const media=file('media','root',{kind:'file'});file('outside');
-  const shares=new Shares(store,catalog,{publicUrl:'https://drive.test'}),share=shares.create('7','root',{});reads.length=0;
+  const shares=new Shares(store,catalog,{publicUrl:'https://drive.test',key:randomBytes(32)}),share=shares.create('7','root',{});reads.length=0;
   assert.equal(shares.file({...share,ownerId:'7'},media.id).id,media.id);assert.equal(reads.some(([op,b])=>op==='list'&&b==='files'),false);
   assert.throws(()=>shares.file({...share,ownerId:'7'},'outside'),{code:'file_not_in_share'});
   catalog.spam('7','root');assert.ok(store.get('shares',share.id).revokedAt);

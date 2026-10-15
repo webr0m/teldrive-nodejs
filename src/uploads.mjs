@@ -11,7 +11,8 @@ export class Uploads {
   public(u) { const { ownerId, parts, ...rest } = u; return rest; }
   get(userId, uploadId, open = false) {
     const u = this.store.get('uploads', uploadId);
-    if (!u || u.ownerId !== String(userId)) fail(404, 'upload_not_found');
+    if (!u || (u.ownerId !== String(userId) && u.createdBy !== String(userId))) fail(404, 'upload_not_found');
+    if (u.ownerId !== String(userId)) this.access.authorize(userId, u.parentId, true);
     if (open && (expired(u.expiresAt) || u.state === 'expired')) fail(410, 'upload_expired');
     if (open && u.state !== 'open') fail(409, 'upload_not_open');
     return u;
@@ -44,8 +45,8 @@ export class Uploads {
         if (existing) { if (existing.checksum !== digest || existing.plainSize !== received) fail(409, 'part_conflict'); return { status: 200, part: this.partPublic(u, existing) }; }
         if (u.parts.reduce((n, p) => n + p.plainSize, 0) + received > u.maxFileSize) fail(413, 'file_too_large');
         const encryptionId = id();
-        if (this.config.databaseLayout === 'legacy' && !u.channelId) { u.channelId = (await this.storage.telegram.selected(userId)).id; this.store.put('uploads', u); }
-        const descriptor = await this.storage.put(userId, temp, received, u.encryption, encryptionId, u.channelId);
+        if (this.config.databaseLayout === 'legacy' && !u.channelId) { u.channelId = (await this.storage.telegram.selected(u.ownerId)).id; this.store.put('uploads', u); }
+        const descriptor = await this.storage.put(u.ownerId, temp, received, u.encryption, encryptionId, u.channelId);
         const part = { ...descriptor, partNo, plainSize: received, checksum: digest, createdAt: now(), updatedAt: now(), state: 'stored' };
         u.parts.push(part); this.store.put('uploads', u);
         return { status: 201, part: this.partPublic(u, part) };
@@ -56,7 +57,7 @@ export class Uploads {
   async complete(userId, uploadId) {
     return this.locks.run(uploadId, async () => {
       const u = this.get(userId, uploadId);
-      if (u.state === 'completed') return { status: 200, file: this.catalog.get(userId, u.fileId) };
+      if (u.state === 'completed') return { status: 200, file: this.catalog.get(u.ownerId, u.fileId) };
       this.get(userId, uploadId, true); u.parts.sort((a, b) => a.partNo - b.partNo);
       let size = 0;
       for (let i = 0; i < u.parts.length; i++) {
@@ -67,12 +68,13 @@ export class Uploads {
       if (u.expectedHash) {
         // A real whole-file BLAKE3 hash, not a hash of part digests.
         const h = blake3.create();
-        for (const p of u.parts) await this.storage.read(userId, p, 0, p.plainSize, bytes => { h.update(bytes); });
+        for (const p of u.parts) await this.storage.read(u.ownerId, p, 0, p.plainSize, bytes => { h.update(bytes); });
         fileHash = { algorithm: 'blake3', value: Buffer.from(h.digest()).toString('hex') };
         if (fileHash.value !== u.expectedHash.value.toLowerCase()) fail(422, 'file_hash_mismatch');
       }
       return this.store.transaction(() => {
-        const file = this.catalog.create(userId, u, 'file', { size, mimeType: u.mimeType, encryption: u.encryption, encryptionKeyVersion: u.parts[0]?.encryptionKeyVersion ?? (u.encryption ? this.config.databaseLayout === 'legacy' ? 1 : this.config.encryptionKeyVersion : undefined), parts: u.parts, hash: fileHash });
+        if (u.createdBy && String(userId) !== u.ownerId) this.access.authorize(userId, u.parentId, true);
+        const file = this.catalog.create(u.ownerId, u, 'file', { size, mimeType: u.mimeType, encryption: u.encryption, encryptionKeyVersion: u.parts[0]?.encryptionKeyVersion ?? (u.encryption ? this.config.databaseLayout === 'legacy' ? 1 : this.config.encryptionKeyVersion : undefined), parts: u.parts, hash: fileHash });
         u.state = 'completed'; u.fileId = file.id; u.completedAt = now(); this.store.put('uploads', u); return { status: 201, file };
       });
     });
@@ -82,7 +84,7 @@ export class Uploads {
       const u = this.get(userId, uploadId);
       if (u.state === 'completed') fail(409, 'upload_completed');
       u.state = 'aborted'; this.store.put('uploads', u);
-      await this.cleanParts(userId, u.parts); u.parts = []; this.store.put('uploads', u);
+      await this.cleanParts(u.ownerId, u.parts); u.parts = []; this.store.put('uploads', u);
     });
   }
   referencedParts() { return new Set(this.store.list('files').flatMap(file => (file.parts || []).map(part => part.objectId ? `local:${part.objectId}` : `telegram:${part.channelId}:${part.messageId}`))); }
@@ -131,7 +133,7 @@ export class Uploads {
   }
   async purge(userId, fileId) {
     return this.locks.run(`catalog:${userId}`, async () => {
-      const root = this.catalog.get(userId, fileId); if (!['trashed','spam'].includes(root.status)) fail(409, 'trash_first');
+      const root = this.catalog.get(userId, fileId); if (!['trashed','spam','deletion_pending'].includes(root.status)) fail(409, 'trash_first');
       const ids = this.catalog.descendants(userId, fileId), files = this.catalog.all(userId).filter(f => ids.has(f.id));
       const byId = new Map(files.map(f => [f.id, f]));
       const depth = f => { let d = 0; const seen = new Set(); while (byId.has(f.parentId) && !seen.has(f.parentId)) { seen.add(f.parentId); f = byId.get(f.parentId); d++; } return d; };

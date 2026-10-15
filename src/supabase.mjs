@@ -42,6 +42,7 @@ export class SupabaseStore {
     if (bucket === 'channels') return { id: String(row.channel_id), ownerId: String(row.user_id), name: row.name, selected: row.selected, health: row.health, createdAt: new Date(row.created_at).toISOString() };
     return row;
   }
+  claimJob(jobId, workerId, leaseSeconds) { return this.rpc({action:'claim-job',id:jobId,workerId,leaseSeconds}).items[0]; }
   get(bucket, key) {
     const pending = this.pending?.findLast(op => op.bucket === bucket && op.id === String(key));
     if (pending) return pending.action === 'delete' ? undefined : structuredCopy(pending.value);
