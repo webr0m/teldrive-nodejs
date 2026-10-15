@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 const directory=await mkdtemp(path.join(os.tmpdir(),'teldrive-npm-runtime-'));
-async function run(executable,args){const code=await new Promise((resolve,reject)=>{const child=spawn(executable,args,{cwd:directory,env:{...process.env,NODE_PATH:''},stdio:'inherit',windowsHide:true});child.on('error',reject);child.on('close',resolve);});if(code)throw new Error(`Production installation check exited ${code}`);}
+async function run(executable,args){const code=await new Promise((resolve,reject)=>{const child=spawn(executable,args,{cwd:directory,env:{...process.env,NODE_PATH:''},stdio:'inherit',windowsHide:true,shell:process.platform==='win32'&&executable.endsWith('.cmd')});child.on('error',reject);child.on('close',resolve);});if(code)throw new Error(`Production installation check exited ${code}`);}
 try{
   const pkg=JSON.parse(await readFile('package.json','utf8'));delete pkg.devDependencies;
   await writeFile(path.join(directory,'package.json'),JSON.stringify(pkg));

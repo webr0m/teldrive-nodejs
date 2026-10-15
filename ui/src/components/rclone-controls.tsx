@@ -258,7 +258,7 @@ export function RcloneControls({ options }: { options: Options }) {
             </pre>
             <a
               className="text-sm text-accent underline"
-              href="https://github.com/webr0m/teldrive-nodejs/releases/latest"
+              href="https://github.com/webr0m/teldrive-nodejs/releases"
               target="_blank"
               rel="noreferrer"
             >
