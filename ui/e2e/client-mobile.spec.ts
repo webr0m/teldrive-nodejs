@@ -17,6 +17,8 @@ test("client tour can be skipped, repeated and remembered; bots remain while ser
   await expect(tour).toContainText("2 de 8");
   await tour.getByRole("button", { name: "Omitir recorrido" }).click();
   await page.reload();
+  await expect(page).toHaveURL(/split=false/);
+  await expect(page.getByRole("row", { name: /alpha\.txt/ })).toBeVisible();
   await expect(tour).toHaveCount(0);
   await page.goto("/settings/help");
   await page.getByRole("textbox", { name: "Buscar en el manual" }).fill("bots");
