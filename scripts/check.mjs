@@ -5,4 +5,5 @@ async function files(dir) { return (await Promise.all((await readdir(dir, { with
 for (const file of ['app.js', 'packages/rclone-teldrive/index.mjs', ...(await files('examples')), ...(await files('src')), ...(await files('scripts')), ...(await files('public'))].filter(f => /\.(mjs|js)$/.test(f))) {
   const result = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' }); if (result.status) { process.stderr.write(result.stderr); process.exit(result.status); }
 }
-console.log('JavaScript syntax checks passed');
+await import('../src/server.mjs');
+console.log('JavaScript syntax and runtime imports passed');

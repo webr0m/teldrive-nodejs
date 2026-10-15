@@ -1,6 +1,6 @@
 {
   "name": "teldrive-nodejs",
-  "version": "0.4.0-alpha",
+  "version": "0.4.1-alpha",
   "private": true,
   "description": "Native Node.js Telegram drive and optional compatibility gateway",
   "type": "commonjs",
@@ -25,6 +25,7 @@
     "ffmpeg-static": "5.3.0",
     "fflate": "0.8.3",
     "pg": "8.23.1",
+    "rclone-sdk": "1.75.0",
     "smol-toml": "1.9.1",
     "teleproto": "1.230.0",
     "tweetnacl": "1.0.3"

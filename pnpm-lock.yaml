@@ -19,7 +19,7 @@ importers:
         version: 2.4.0
       '@webr0m/rclone-teldrive':
         specifier: file:packages/rclone-teldrive
-        version: file:packages/rclone-teldrive
+        version: link:packages/rclone-teldrive
       fflate:
         specifier: 0.8.3
         version: 0.8.3
@@ -29,6 +29,9 @@ importers:
       pg:
         specifier: 8.23.1
         version: 8.23.1
+      rclone-sdk:
+        specifier: 1.75.0
+        version: 1.75.0(@tanstack/react-query@5.104.2(react@19.3.0))(react@19.3.0)(swr@2.5.1(react@19.3.0))(typescript@5.9.3)
       smol-toml:
         specifier: 1.9.1
         version: 1.9.1
@@ -124,10 +127,6 @@ packages:
 
   '@types/node@10.17.60':
     resolution: {integrity: sha512-F0KIgDJfy2nA3zMLmWGKxcH2ZVEtCZXHHdOQs2gSaQ27+lNeEfGxzkIw90aXswATX7AZ33tahPbzy6KAfUreVw==}
-
-  '@webr0m/rclone-teldrive@file:packages/rclone-teldrive':
-    resolution: {directory: packages/rclone-teldrive, type: directory}
-    engines: {node: '>=22.13.0'}
 
   agent-base@6.0.2:
     resolution: {integrity: sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==}
@@ -434,16 +433,6 @@ snapshots:
       react: 19.3.0
 
   '@types/node@10.17.60': {}
-
-  '@webr0m/rclone-teldrive@file:packages/rclone-teldrive':
-    dependencies:
-      rclone-sdk: 1.75.0(@tanstack/react-query@5.104.2(react@19.3.0))(react@19.3.0)(swr@2.5.1(react@19.3.0))(typescript@5.9.3)
-    transitivePeerDependencies:
-      - '@tanstack/react-query'
-      - openapi-typescript
-      - react
-      - swr
-      - typescript
 
   agent-base@6.0.2:
     dependencies:

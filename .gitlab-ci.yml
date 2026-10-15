@@ -10,6 +10,7 @@ test:
     - node scripts/install-media.mjs
     - node scripts/install-rclone.mjs
     - npm test
+    - node scripts/check-production-install.mjs
     - pnpm --dir ui run build
     - pnpm --dir ui run typecheck
     - node scripts/package.mjs
