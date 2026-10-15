@@ -1,3 +1,5 @@
+import { nativeClient } from "./client-runtime";
+
 export const clientSettings = [
   {
     title: "Tu cuenta",
@@ -33,11 +35,15 @@ export const clientSettings = [
         label: "Apariencia",
         description: "Tema, idioma y densidad de la interfaz",
       },
-      {
-        path: "/settings/privacy",
-        label: "Privacidad y publicidad",
-        description: "Consentimiento y caché del dispositivo",
-      },
+      ...(nativeClient
+        ? [
+            {
+              path: "/settings/privacy",
+              label: "Privacidad y publicidad",
+              description: "Consentimiento y caché del dispositivo",
+            },
+          ]
+        : []),
     ],
   },
   {

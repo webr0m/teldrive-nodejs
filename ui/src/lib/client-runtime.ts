@@ -34,6 +34,7 @@ export const clientSettingsPaths = new Set([
   "/settings/privacy",
 ]);
 export function clientPathAllowed(pathname: string) {
+  if (pathname.replace(/\/$/, "") === "/settings/privacy" && !nativeClient) return false;
   if (!clientOnly) return true;
   if (pathname.startsWith("/settings"))
     return clientSettingsPaths.has(pathname.replace(/\/$/, "") || "/settings");

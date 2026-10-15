@@ -18,6 +18,8 @@ import { Jobs } from './jobs.mjs';
 import { Rclone } from './rclone.mjs';
 import { Mobile, assertClientAccess } from './mobile.mjs';
 import { Settings } from './settings.mjs';
+import { requireOwner } from './permissions.mjs';
+import { ServerConfiguration } from './server-configuration.mjs';
 import { Playback } from './playback.mjs';
 import { Media } from './media.mjs';
 import { gateway } from './gateway.mjs';
@@ -36,6 +38,13 @@ function route(method, pattern, handler, { public: open = false, raw = false, ti
 const result = (body, status = 200, headers = {}) => ({ body, status, headers });
 const empty = () => result(undefined, 204);
 const admin = user => { if (!['owner', 'admin'].includes(user.role)) fail(403, 'administrator_required'); };
+const owner = c => requireOwner(c.user, c.config);
+const configurationOwner = c => {
+  owner(c);
+  if (c.apiKey || !c.session || c.session.scope === 'client' || (c.session.provider || 'telegram') !== 'telegram') fail(403, 'telegram_owner_session_required');
+  if (c.req.headers.origin && c.req.headers.origin !== c.config.publicUrl) fail(403, 'origin_not_allowed');
+  if (c.req.method !== 'GET' && c.req.headers['x-teldrive-config'] !== '1') fail(403, 'configuration_header_required');
+};
 const validateIds = body => { if (!Array.isArray(body.fileIds) || !body.fileIds.length || body.fileIds.length > 500 || body.fileIds.some(v => typeof v !== 'string')) fail(422, 'invalid_file_ids'); return [...new Set(body.fileIds)]; };
 const metadata = (c, file, status = 200) => result(c.catalog.public(file), status, { ETag: c.catalog.etag(file), ...(status === 201 ? { Location: `/api/v1/files/${file.id}` } : {}) });
 const publicShare = c => c.shares.resolve(c.params.shareToken, c.req.headers['x-share-password'], cookies(c.req).td_share_session);
@@ -100,7 +109,9 @@ route('POST', '/api/v1/api-keys', c => {
 });
 route('GET', '/api/v1/api-keys', c => result(page(c.store.list('keys', c.user.id).filter(k => !k.revokedAt).map(({ id, keyId, userId, ...k }) => ({ id: keyId, ...k })), c.query)));
 route('DELETE', '/api/v1/api-keys/:keyId', c => { const k = c.store.list('keys', c.user.id).find(k => k.keyId === c.params.keyId); if (!k) fail(404, 'key_not_found'); k.revokedAt = now(); c.store.put('keys', k); return empty(); });
-route('GET', '/api/v1/admin/settings', c => { admin(c.user); return result(c.settings.read()); });
+route('GET', '/api/v1/admin/settings', c => { owner(c); return result(c.settings.read()); });
+route('GET', '/api/v1/admin/configuration', c => { configurationOwner(c); return result(c.serverConfiguration.read()); });
+for (const action of ['validate', 'save', 'restore', 'restart']) route('POST', `/api/v1/admin/configuration/${action}`, c => { configurationOwner(c); return result(c.serverConfiguration[action](c.body)); });
 route('GET', '/api/v1/jobs', c => { admin(c.user); c.jobs.wake(); return result(c.jobs.list(c.user.id,c.query)); });
 route('POST', '/api/v1/jobs', c => { admin(c.user); return result(c.jobs.create(c.user.id,c.body),201); });
 route('GET', '/api/v1/jobs/statistics', c => { admin(c.user); return result(c.jobs.statistics(c.user.id)); });
@@ -111,9 +122,9 @@ route('GET','/api/v1/jobs/:jobId',c=>{admin(c.user);return result(c.jobs.public(
 for(const action of ['cancel','retry'])route('POST',`/api/v1/jobs/:jobId/${action}`,c=>{admin(c.user);return result(c.jobs[action](c.user.id,c.params.jobId));});
 route('DELETE','/api/v1/jobs/:jobId',c=>{admin(c.user);c.jobs.delete(c.user.id,c.params.jobId);return empty();});
 route('PATCH', '/api/v1/admin/settings', c => result(c.settings.update(c.user, c.body)));
-route('GET', '/api/v1/admin/users', c => { admin(c.user); return result(c.store.list('users').map(u => ({ ...c.auth.profile(u), disabled: !!u.disabled, updatedAt: u.updatedAt }))); });
+route('GET', '/api/v1/admin/users', c => { owner(c); return result(c.store.list('users').map(u => ({ ...c.auth.profile(u), disabled: !!u.disabled, updatedAt: u.updatedAt }))); });
 route('PATCH', '/api/v1/admin/users/:userId', c => {
-  admin(c.user); const user = c.store.get('users', c.params.userId); if (!user) fail(404, 'user_not_found');
+  owner(c); const user = c.store.get('users', c.params.userId); if (!user) fail(404, 'user_not_found');
   if (user.role === 'owner' || c.body.role === 'owner') fail(403, 'owner_role_protected');
   if (c.body.role !== undefined && !['user', 'admin'].includes(c.body.role)) fail(422, 'invalid_role');
   if (c.user.role !== 'owner' && c.body.role !== undefined) fail(403, 'owner_required');
@@ -121,7 +132,7 @@ route('PATCH', '/api/v1/admin/users/:userId', c => {
   Object.assign(user, { role: c.body.role ?? user.role, disabled: c.body.disabled ?? user.disabled, updatedAt: now() }); c.store.put('users', user);
   return result({ ...c.auth.profile(user), disabled: !!user.disabled, updatedAt: user.updatedAt });
 });
-route('POST', '/api/v1/admin/users/:userId/revoke-access', c => { admin(c.user); const user = c.store.get('users', c.params.userId); if (!user) fail(404, 'user_not_found'); if (user.role === 'owner') fail(403, 'owner_role_protected'); for (const s of c.store.list('sessions', user.id)) c.auth.revoke(s); for (const key of c.store.list('keys', user.id)) { key.revokedAt = now(); c.store.put('keys', key); } return empty(); });
+route('POST', '/api/v1/admin/users/:userId/revoke-access', c => { owner(c); const user = c.store.get('users', c.params.userId); if (!user) fail(404, 'user_not_found'); if (user.role === 'owner') fail(403, 'owner_role_protected'); for (const s of c.store.list('sessions', user.id)) c.auth.revoke(s); for (const key of c.store.list('keys', user.id)) { key.revokedAt = now(); c.store.put('keys', key); } return empty(); });
 route('GET', '/api/v1/users/search', c => { if (!c.query.get('search')) fail(422, 'search_required'); return result(c.store.list('users').filter(u => !u.disabled && `${u.id} ${u.username || ''} ${u.displayName}`.toLowerCase().includes(c.query.get('search').toLowerCase())).slice(0, 100).map(u => ({ userId: Number(u.id), displayName: u.displayName, username: u.username }))); });
 
 route('GET', '/api/v1/files', c => {
@@ -309,7 +320,7 @@ export function createApp(config, overrides = {}) {
     const store = overrides.store || (config.databaseTransport === 'supabase' ? new SupabaseStore(config) : config.databaseUrl ? new PostgresStore(config) : new Store(config.dataDir)), catalog = new Catalog(store), telegram = overrides.telegram || new Telegram(store, config);
     const auth = new Auth(store, config, telegram), storage = overrides.storage || new Storage(config, telegram), uploads = new Uploads(store, catalog, storage, config), shares = new Shares(store, catalog, config), settings = new Settings(store, config, uploads);
     const access = new Access(store, catalog); uploads.access = access;
-    context = { store, catalog, telegram, auth, storage, uploads, shares, settings, config, access, playback: new Playback(store, catalog, shares, config) };
+    context = { store, catalog, telegram, auth, storage, uploads, shares, settings, serverConfiguration: new ServerConfiguration(config), config, access, playback: new Playback(store, catalog, shares, config) };
     context.playback.access = access;
     context.jobs = new Jobs(store, uploads, config); context.jobs.start();
     context.rclone = new Rclone(config, { allowed: user => { const account = store.get('users', user); return !!account && !account.disabled && ['owner','admin'].includes(account.role); } }); context.rclone.start();

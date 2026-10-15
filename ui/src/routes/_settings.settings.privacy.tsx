@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { Button } from "@heroui/react";
 import { toast } from "sonner";
 import { apiFetch } from "@/api/client";
@@ -9,7 +9,10 @@ import { publicHttps } from "@/lib/mobile-ads-config";
 import { cleanClientCache } from "@/lib/mobile";
 import { reviewAdvertisingPrivacy } from "@/components/mobile-advertising";
 import { SettingsPageHeader, SettingsSection } from "@/components/settings-layout";
-export const Route = createFileRoute("/_settings/settings/privacy")({ component: Privacy });
+export const Route = createFileRoute("/_settings/settings/privacy")({
+  beforeLoad: () => { if (!nativeClient) throw redirect({ to: "/settings", replace: true }); },
+  component: Privacy,
+});
 function Privacy() {
   const [busy, setBusy] = useState(false);
   const config = useQuery({

@@ -569,7 +569,12 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     )
       return;
     try {
-      await context.queryClient.ensureQueryData(currentUserQueryOptions());
+      const user = await context.queryClient.ensureQueryData(currentUserQueryOptions());
+      const path = location.pathname.replace(/\/$/, "");
+      const capability = path === "/settings/users" ? "system.manageUsers" :
+        ["/settings/server", "/settings/configuration"].includes(path) ? "system.configureServer" : undefined;
+      if (capability && !user.capabilities.includes(capability))
+        throw redirect({ to: "/settings", replace: true });
     } catch (error) {
       if (!isUnauthorized(error)) throw error;
       throw redirect({

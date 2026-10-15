@@ -28,4 +28,6 @@ artifacts/
 *.log
 .wrangler/
 config.toml
+config.admin.toml
+config.admin.toml.*
 !config.sample.toml

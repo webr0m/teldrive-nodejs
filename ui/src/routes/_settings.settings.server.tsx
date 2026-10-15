@@ -15,12 +15,12 @@ type Limits = {
 export const Route = createFileRoute("/_settings/settings/server")({ component: ServerSettings });
 function ServerSettings() {
   const user = useCurrentUser();
-  const allowed = ["owner", "admin"].includes(user.data.role);
+  const allowed = user.data.capabilities.includes("system.configureServer");
   const query = useQuery({ queryKey: ["server-limits"], enabled: allowed, queryFn: async () => (await apiFetch("/v1/admin/settings")).json() as Promise<Limits> });
   const [values, setValues] = useState<Record<string, number>>({});
   useEffect(() => { if (query.data) setValues(query.data.values); }, [query.data]);
   const update = useMutation({ mutationFn: async () => (await apiFetch("/v1/admin/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) })).json(), onSuccess: () => { toast.success(t("Configuración guardada")); void query.refetch(); }, onError: (error) => toast.error(String(error)) });
-  if (!allowed) return <p>{t("Se requiere permiso de administrador.")}</p>;
+  if (!allowed) return <p>{t("Esta opción solo está disponible para el propietario.")}</p>;
   return <div className="space-y-6">
     <SettingsPageHeader title={t("Límites del servidor")} description={t("Ajusta los recursos al servidor actual. Los cambios se guardan y se aplican a las nuevas transferencias.")} actions={<Button variant="primary" isDisabled={update.isPending || !query.data} onPress={() => update.mutate()}>{t("Guardar configuración")}</Button>} />
     <SettingsSection title={t("Recursos y transferencias")} description={t("Las cargas iniciadas conservan su tamaño de fragmento para poder reanudarse.")}>

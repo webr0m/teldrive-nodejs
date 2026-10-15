@@ -1,13 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { parse } from 'smol-toml';
 
-const mappings = {
+export const mappings = {
   'server.port': 'PORT', 'tg.app-id': 'TELEGRAM_API_ID', 'tg.app-hash': 'TELEGRAM_API_HASH',
   'db.data-source': 'DATABASE_URL', 'db.pool.max-open-connections': 'DATABASE_POOL_SIZE',
   'jwt.allowed-users': 'ALLOWED_USERS', 'tg.uploads.encryption-key': 'LEGACY_ENCRYPTION_KEY',
   'node.host': 'HOST', 'node.public-url': 'PUBLIC_URL', 'node.mode': 'MODE',
   'node.storage-backend': 'STORAGE_BACKEND', 'node.data-dir': 'DATA_DIR', 'node.data-key': 'DATA_KEY',
-  'node.database-layout': 'DATABASE_LAYOUT', 'node.database-schema': 'DATABASE_SCHEMA',
+  'node.database-url': 'DATABASE_URL', 'node.database-layout': 'DATABASE_LAYOUT', 'node.database-schema': 'DATABASE_SCHEMA',
   'node.metadata-schema': 'NODE_DATABASE_SCHEMA', 'node.owner-user-id': 'OWNER_USER_ID',
   'node.database-transport': 'DATABASE_TRANSPORT', 'node.supabase-url': 'SUPABASE_URL', 'node.supabase-key': 'SUPABASE_SECRET_KEY',
   'node.upstream-url': 'UPSTREAM_URL', 'node.cors-origins': 'CORS_ORIGINS',
@@ -41,7 +41,10 @@ const mappings = {
   'security.data-key': 'DATA_KEY', 'security.allowed-users': 'ALLOWED_USERS',
 };
 export function tomlEnvironment(filename, env) {
-  const parsed = parse(readFileSync(filename, 'utf8')), mapped = {};
+  return { ...mapToml(parse(readFileSync(filename, 'utf8'))), ...env };
+}
+export function mapToml(parsed) {
+  const mapped = {};
   for (const [key, target] of Object.entries(mappings)) {
     const value = key.split('.').reduce((obj, part) => obj?.[part], parsed);
     if (value !== undefined) mapped[target] = Array.isArray(value) ? value.join(',') : String(value);
@@ -63,5 +66,5 @@ export function tomlEnvironment(filename, env) {
     const value = key.split('.').reduce((obj, part) => obj?.[part], parsed);
     if (value !== undefined) mapped[target] = Array.isArray(value) ? value.join(',') : String(value);
   }
-  return { ...mapped, ...env };
+  return mapped;
 }

@@ -1,4 +1,5 @@
 import { id, now, token, hash, expires, expired, fail, CryptoBox } from './core.mjs';
+import { isOwner } from './permissions.mjs';
 
 export function cookies(req) {
   const result = {};
@@ -11,13 +12,13 @@ export function cookies(req) {
 export class Auth {
   constructor(store, config, telegram) { this.store = store; this.config = config; this.telegram = telegram; this.box = new CryptoBox(config.key); }
   user(userId) { const u = this.store.get('users', userId); if (!u || u.disabled) fail(401, 'invalid_session'); return u; }
-  profile(u) { return { userId: Number(u.id), displayName: u.displayName, username: u.username, premium: !!u.premium, role: u.role, clientOnly: !!u.clientOnly, capabilities: ['files', 'uploads', 'shares', 'files.manageGrants', ...(!u.clientOnly && ['owner', 'admin'].includes(u.role) ? ['system.manageUsers','system.manageJobs'] : [])], createdAt: u.createdAt }; }
+  profile(u) { return { userId: Number(u.id), displayName: u.displayName, username: u.username, premium: !!u.premium, role: u.role, clientOnly: !!u.clientOnly, capabilities: ['files', 'uploads', 'shares', 'files.manageGrants', ...(isOwner(u, this.config) ? ['system.manageUsers','system.configureServer'] : []), ...(!u.clientOnly && ['owner', 'admin'].includes(u.role) ? ['system.manageJobs'] : [])], createdAt: u.createdAt }; }
   finish(me, sessionString, options) {
     const userId = String(me.id);
     if (this.config.allowedUsers.length && !this.config.allowedUsers.includes(userId) && !this.config.allowedUsers.some(v => me.username && v.replace(/^@/, '').toLowerCase() === me.username.toLowerCase())) fail(403, 'user_not_allowed');
     let u = this.store.get('users', userId);
     if (this.config.existingUsersOnly && !u) fail(403, 'existing_user_required');
-    const role = userId === this.config.ownerUserId ? 'owner' : u?.role || (this.store.list('users').length ? 'user' : 'owner');
+    const role = userId === this.config.ownerUserId ? 'owner' : u?.role || (!this.config.ownerUserId && !this.store.list('users').length ? 'owner' : 'user');
     u = { ...u, id: userId, userId, displayName: [me.firstName, me.lastName].filter(Boolean).join(' '), username: me.username, premium: !!me.premium, role, createdAt: u?.createdAt || now(), updatedAt: now(), disabled: u?.disabled || false };
     if (u.disabled) fail(403, 'user_disabled');
     if (sessionString) u.telegramSession = this.box.encode(sessionString, `telegram:${userId}`);

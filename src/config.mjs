@@ -2,9 +2,16 @@ import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { tomlEnvironment } from './toml.mjs';
 
-export function config(env = process.env) {
+const sources = new WeakMap();
+export const configurationSource = value => sources.get(value);
+
+export function config(env = process.env, { skipManaged = false } = {}) {
   const filename = env.CONFIG_FILE === 'none' ? undefined : env.CONFIG_FILE || (existsSync('config.toml') ? 'config.toml' : undefined);
   if (filename) env = tomlEnvironment(filename, env);
+  const baseEnv = { ...env };
+  const managedFile = env.SERVER_CONFIG_FILE === 'none' || env.CONFIG_FILE === 'none' && !env.SERVER_CONFIG_FILE
+    ? undefined : path.resolve(env.SERVER_CONFIG_FILE || 'config.admin.toml');
+  if (!skipManaged && managedFile && existsSync(managedFile)) env = { ...baseEnv, ...tomlEnvironment(managedFile, {}) };
   const integer = (name, fallback, min, max) => {
     const n = Number(env[name] ?? fallback);
     if (!Number.isSafeInteger(n) || n < min || n > max) throw new Error(`Invalid ${name}`);
@@ -88,6 +95,10 @@ export function config(env = process.env) {
   if (!['native', 'legacy', 'v2', 'auto'].includes(c.databaseLayout)) throw new Error('Invalid DATABASE_LAYOUT');
   if (c.databaseLayout !== 'native' && ((!c.databaseUrl && !c.supabaseUrl) || c.backend !== 'telegram')) throw new Error('Existing database requires a database connection and Telegram storage');
   if (!['postgres', 'supabase'].includes(c.databaseTransport)) throw new Error('Invalid DATABASE_TRANSPORT');
+  if (c.databaseUrl && !c.databaseUrl.startsWith('pglite:')) {
+    const url = new URL(c.databaseUrl);
+    if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.hostname || url.hash) throw new Error('Invalid DATABASE_URL');
+  }
   if (c.databaseTransport === 'supabase') {
     if (c.databaseSchema !== 'teldrive' || c.metadataSchema !== 'teldrive_node' || c.backend !== 'telegram') throw new Error('Supabase RPC requires the teldrive v2 schema and Telegram storage');
     const url = new URL(c.supabaseUrl || '');
@@ -99,5 +110,7 @@ export function config(env = process.env) {
   if (c.databaseSchema === c.metadataSchema) throw new Error('Use a separate schema for Node-specific metadata');
   if (c.production && !c.publicUrl.startsWith('https:')) throw new Error('Production PUBLIC_URL must use HTTPS');
   for (const origin of c.cors) if (new URL(origin).origin !== origin) throw new Error('CORS_ORIGINS requires exact origins');
+  if (managedFile && (managedFile === c.staticDir || managedFile.startsWith(c.staticDir + path.sep))) throw new Error('SERVER_CONFIG_FILE must be outside STATIC_DIR');
+  sources.set(c, { baseEnv, managedFile, environment: { ...env } });
   return c;
 }

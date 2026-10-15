@@ -13,7 +13,6 @@ import UploadIcon from "~icons/gravity-ui/arrow-up-from-line";
 import CloseIcon from "~icons/gravity-ui/xmark";
 import ClockIcon from "~icons/gravity-ui/clock";
 import InfoIcon from "~icons/gravity-ui/circle-info";
-import ShieldIcon from "~icons/gravity-ui/shield-check";
 import { useCurrentUser } from "@/auth/use-current-user";
 import { clientOnly, clientSettingsPaths } from "@/lib/client-runtime";
 
@@ -51,7 +50,6 @@ const SETTINGS_GROUPS = [
       { label: t("Apariencia"), path: "/settings/appearance", icon: PaletteIcon },
       { label: "Rclone", path: "/settings/rclone", icon: StorageIcon },
       { label: t("Ayuda y manual"), path: "/settings/help", icon: InfoIcon },
-      { label: t("Privacidad y publicidad"), path: "/settings/privacy", icon: ShieldIcon },
     ],
   },
   {
@@ -61,7 +59,13 @@ const SETTINGS_GROUPS = [
         label: t("Límites del servidor"),
         path: "/settings/server",
         icon: StorageIcon,
-        capability: "system.manageUsers",
+        capability: "system.configureServer",
+      },
+      {
+        label: t("Configuración del servidor"),
+        path: "/settings/configuration",
+        icon: StorageIcon,
+        capability: "system.configureServer",
       },
       {
         label: t("Tareas periódicas"),

@@ -1,4 +1,5 @@
 import { number, fail, now } from './core.mjs';
+import { requireOwner } from './permissions.mjs';
 
 // Infrastructure-independent limits, persisted separately from credentials.
 export const limitDefinitions = {
@@ -51,7 +52,7 @@ export class Settings {
     Object.assign(this.config, values); this.uploads.transfers.max = this.config.concurrency;
   }
   update(user, values) {
-    if (!['owner', 'admin'].includes(user.role)) fail(403, 'administrator_required');
+    requireOwner(user, this.config);
     if (!values || typeof values !== 'object' || Array.isArray(values)) fail(422, 'invalid_settings');
     // Validate all entries before mutating live configuration.
     this.apply(values);

@@ -86,6 +86,7 @@ export async function installFileApi(page: Page) {
             "files.write",
             "files.share",
             "system.manageUsers",
+            "system.configureServer",
             "system.manageJobs",
             "system.manageQueues",
             "system.localImport",

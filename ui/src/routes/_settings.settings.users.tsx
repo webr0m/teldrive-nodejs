@@ -64,7 +64,7 @@ function UsersSettings() {
       <SettingsSection
         title={t("Usuarios")}
         description={t(
-          "La primera cuenta es la propietaria del servidor y no se puede degradar ni desactivar.",
+          "Solo el propietario puede gestionar usuarios y permisos. Su cuenta no se puede degradar ni desactivar.",
         )}
       >
         <div className="border-b border-border p-4">
