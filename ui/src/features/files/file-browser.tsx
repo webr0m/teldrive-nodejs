@@ -1,5 +1,6 @@
 import { t } from "@/lib/localization";
-import { Button, Card, Checkbox, Spinner } from "@heroui/react";
+import { Button, Card, Checkbox, Dropdown, Label, Spinner } from "@heroui/react";
+import { clientOnly } from "@/lib/client-runtime";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   FileContextMenu,
@@ -147,24 +148,56 @@ export function FileBrowser({
           )}
           <div className="file-browser-controls flex shrink-0 items-center gap-1">
             {toolbar}
-            <Button
-              isIconOnly
-              size="sm"
-              variant={view === "list" ? "secondary" : "ghost"}
-              aria-label={t("Vista de lista")}
-              onPress={() => onViewChange("list")}
-            >
-              <ListIcon className="size-4" />
-            </Button>
-            <Button
-              isIconOnly
-              size="sm"
-              variant={view === "grid" ? "secondary" : "ghost"}
-              aria-label={t("Vista de cuadrícula")}
-              onPress={() => onViewChange("grid")}
-            >
-              <GridIcon className="size-4" />
-            </Button>
+            {clientOnly ? (
+              <Dropdown>
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="secondary"
+                  aria-label={t("Vista de archivos")}
+                >
+                  <GridIcon className="size-4" />
+                </Button>
+                <Dropdown.Popover>
+                  <Dropdown.Menu
+                    aria-label={t("Vista de archivos")}
+                    selectionMode="single"
+                    selectedKeys={new Set([view])}
+                    onAction={(key) => onViewChange(key as FileBrowserView)}
+                  >
+                    <Dropdown.Item id="list" textValue={t("Vista de lista")}>
+                      <ListIcon className="size-4" />
+                      <Label>{t("Vista de lista")}</Label>
+                    </Dropdown.Item>
+                    <Dropdown.Item id="grid" textValue={t("Vista de cuadrícula")}>
+                      <GridIcon className="size-4" />
+                      <Label>{t("Vista de cuadrícula")}</Label>
+                    </Dropdown.Item>
+                  </Dropdown.Menu>
+                </Dropdown.Popover>
+              </Dropdown>
+            ) : (
+              <>
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant={view === "list" ? "secondary" : "ghost"}
+                  aria-label={t("Vista de lista")}
+                  onPress={() => onViewChange("list")}
+                >
+                  <ListIcon className="size-4" />
+                </Button>
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant={view === "grid" ? "secondary" : "ghost"}
+                  aria-label={t("Vista de cuadrícula")}
+                  onPress={() => onViewChange("grid")}
+                >
+                  <GridIcon className="size-4" />
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </Card.Header>

@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   webDir: "dist-mobile",
   android: { allowMixedContent: false, backgroundColor: "#10121a" },
   ios: {
-    contentInset: "automatic",
+    contentInset: "never",
     backgroundColor: "#10121a",
     limitsNavigationsToAppBoundDomains: false,
   },

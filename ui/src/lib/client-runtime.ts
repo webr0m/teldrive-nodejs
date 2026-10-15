@@ -23,6 +23,8 @@ export const apiUrl = (value: string) => new URL(value, serverOrigin).toString()
 export const clientSettingsPaths = new Set([
   "/settings",
   "/settings/",
+  "/settings/account",
+  "/settings/channels",
   "/settings/bots",
   "/settings/sessions",
   "/settings/uploads",

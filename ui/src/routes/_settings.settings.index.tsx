@@ -10,9 +10,10 @@ import { getQueryClient } from "@/lib/queryClient";
 import LogoutIcon from "~icons/gravity-ui/arrow-right-from-square";
 import { clientOnly } from "@/lib/client-runtime";
 import { GoogleAccount } from "@/components/google-account";
+import { ClientSettingsHome } from "@/components/client-navigation";
 
 export const Route = createFileRoute("/_settings/settings/")({
-  component: AccountSettings,
+  component: () => (clientOnly ? <ClientSettingsHome /> : <AccountSettings />),
   pendingComponent: () => (
     <div className="flex justify-center py-16">
       <Spinner size="lg" />
@@ -27,7 +28,7 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 ** power).toFixed(power === 0 ? 0 : 1)} ${units[power]}`;
 }
 
-function AccountSettings() {
+export function AccountSettings() {
   const navigate = useNavigate();
   const user = useCurrentUser();
   const stats = $api.useSuspenseQuery(

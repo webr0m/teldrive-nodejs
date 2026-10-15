@@ -45,6 +45,7 @@ import { getQueryClient } from "../lib/queryClient";
 import { clientOnly, clientPathAllowed, apiUrl } from "@/lib/client-runtime";
 import { ClientTour } from "@/components/client-tour";
 import { MobileAdvertising } from "@/components/mobile-advertising";
+import { ClientNavigation } from "@/components/client-navigation";
 
 const mainNav = [
   { label: t("Archivos"), icon: GridIcon, path: "/files" },
@@ -85,7 +86,9 @@ function Sidebar({
   const { data: user } = useQuery(currentUserQueryOptions());
   const logout = $api.useMutation("post", "/v1/auth/cookie/logout");
   const visibleMainNav = mainNav.filter(
-    (item) => (!clientOnly || clientPathAllowed(item.path)) && (!("capability" in item) || Boolean(user?.capabilities.includes(item.capability))),
+    (item) =>
+      (!clientOnly || clientPathAllowed(item.path)) &&
+      (!("capability" in item) || Boolean(user?.capabilities.includes(item.capability))),
   );
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const displayName =
@@ -452,14 +455,42 @@ function Layout() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  if (pathname === "/login" || pathname === "/manual" || pathname === "/cast" || pathname.startsWith("/share/"))
+  if (
+    pathname === "/login" ||
+    pathname === "/manual" ||
+    pathname === "/cast" ||
+    pathname.startsWith("/share/")
+  )
     return <Outlet />;
+  if (clientOnly)
+    return (
+      <AriaRouterProvider
+        navigate={(path) => navigate({ to: String(path) })}
+        useHref={(path) => String(path)}
+      >
+        <div className="client-shell flex h-dvh min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background text-foreground">
+          <ClientNavigation>
+            <main className="client-main min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-3">
+              <Outlet />
+            </main>
+            <MobileAdvertising />
+          </ClientNavigation>
+          <UploadShelf />
+          <ClientTour />
+        </div>
+      </AriaRouterProvider>
+    );
   return (
     <AriaRouterProvider
       navigate={(path) => navigate({ to: String(path) })}
       useHref={(path) => String(path)}
     >
-      <div className={cn("flex h-dvh w-full overflow-hidden bg-background text-foreground", clientOnly && "client-shell")}>
+      <div
+        className={cn(
+          "flex h-dvh w-full overflow-hidden bg-background text-foreground",
+          clientOnly && "client-shell",
+        )}
+      >
         {desktop && <Sidebar collapsed={collapsed} />}
         {!desktop && mobileOpen && (
           <div
@@ -528,10 +559,11 @@ export const Route = createRootRouteWithContext<RouterContext>()({
         replace: true,
       });
     }
-    if (location.pathname === "/settings/account")
+    if (!clientOnly && location.pathname === "/settings/account")
       throw redirect({ to: "/settings", replace: true });
     if (
-      location.pathname === "/login" || location.pathname === "/manual" ||
+      location.pathname === "/login" ||
+      location.pathname === "/manual" ||
       location.pathname === "/cast" ||
       location.pathname.startsWith("/share/")
     )

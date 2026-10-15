@@ -14,19 +14,19 @@ test("client tour can be skipped, repeated and remembered; bots remain while ser
   const tour = page.getByRole("dialog").filter({ hasText: "Teldrive Cliente ·" });
   await expect(tour).toBeVisible();
   await tour.getByRole("button", { name: "Siguiente", exact: true }).click();
-  await expect(tour).toContainText("2 de 8");
+  await expect(tour).toContainText("2 de 9");
   await tour.getByRole("button", { name: "Omitir recorrido" }).click();
   await page.reload();
   await expect(page).toHaveURL(/split=false/);
   await expect(page.getByRole("row", { name: /alpha\.txt/ })).toBeVisible();
   await expect(tour).toHaveCount(0);
   await page.goto("/settings/help");
-  await page.getByRole("textbox", { name: "Buscar en el manual" }).fill("bots");
+  await page.getByRole("textbox", { name: "Buscar en el manual" }).fill("Administrar tus bots");
   await expect(page.locator("details")).toHaveCount(1);
   await page.getByRole("button", { name: "Repetir recorrido" }).click();
-  await expect(tour).toContainText("1 de 8");
+  await expect(tour).toContainText("1 de 9");
   await tour.getByRole("button", { name: "Omitir recorrido" }).click();
-  if (isMobile) await page.getByRole("button", { name: "Abrir menú de configuración" }).click();
+  await page.getByRole("link", { name: "Ajustes", exact: true }).click();
   await expect(page.getByRole("link", { name: "Bots", exact: true })).toBeVisible();
   for (const name of [
     "Rclone",
@@ -87,7 +87,7 @@ test("own banners rotate on the configured interval and pause inside dialogs", a
     }),
   );
   const manifest = page.waitForResponse("https://ads.example/config.json");
-  await page.goto("/files?client=mobile");
+  await page.goto("/files?client=mobile", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "Omitir recorrido" }).click();
   await manifest;
   const banner = page.getByRole("complementary", { name: "Publicidad propia" });
@@ -97,7 +97,7 @@ test("own banners rotate on the configured interval and pause inside dialogs", a
   await expect(banner).toHaveCount(0);
   await page.clock.runFor(31000);
   await expect(banner).toBeVisible();
-  await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
+  await page.getByRole("button", { name: "Más opciones de la aplicación", exact: true }).click();
   await expect(banner).toHaveCount(0);
   await page.clock.runFor(6000);
   await expect(banner).toHaveCount(0);

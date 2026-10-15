@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { normalizeApiError, userMessage } from "@/api/errors";
 import type { FileEntry } from "@/api/types";
 import { currentUserQueryOptions } from "@/auth/queries";
+import { clientOnly } from "@/lib/client-runtime";
 import { BackgroundUploadDialog } from "@/components/background-upload-dialog";
 import { AppDialog } from "@/components/dialogs/app-dialog";
 import { isPreviewable } from "@/components/file-preview-dialog";
@@ -66,7 +67,7 @@ export type FilesLocation = PaneLocation & {
 };
 
 export function FileManagerPage({
-  location: search,
+  location: routeLocation,
   onLocationChange,
   searchMode,
 }: {
@@ -77,6 +78,7 @@ export function FileManagerPage({
     onChange: (search: SearchState, replace?: boolean) => void;
   };
 }) {
+  const search = clientOnly ? { ...routeLocation, split: false } : routeLocation;
   const navigateTo = useNavigate();
   const [savedSort, setSavedSort] = useState(loadSortPreference);
   const sorting = { sort: search.sort ?? savedSort.sort, order: search.order ?? savedSort.order };
@@ -575,11 +577,13 @@ export function FileManagerPage({
       <>
         <Dropdown>
           <Button size="sm" variant="secondary" aria-label={t("Ordenar archivos")}>
-            {sorting.sort === "updatedAt"
-              ? t("Fecha de modificación")
-              : sorting.sort === "size"
-                ? t("Tamaño")
-                : t("Nombre")}
+            {clientOnly
+              ? t("Ordenar")
+              : sorting.sort === "updatedAt"
+                ? t("Fecha de modificación")
+                : sorting.sort === "size"
+                  ? t("Tamaño")
+                  : t("Nombre")}
             {sorting.order === "asc" ? " ↑" : " ↓"}
           </Button>
           <Dropdown.Popover>
@@ -587,7 +591,11 @@ export function FileManagerPage({
               aria-label={t("Ordenar por")}
               selectionMode="single"
               selectedKeys={new Set([sorting.sort])}
-              onAction={(key) => changeSorting({ ...sorting, sort: key as FileSort })}
+              onAction={(key) =>
+                key === "direction"
+                  ? changeSorting({ ...sorting, order: sorting.order === "asc" ? "desc" : "asc" })
+                  : changeSorting({ ...sorting, sort: key as FileSort })
+              }
             >
               <Dropdown.Item id="name" textValue={t("Nombre")}>
                 <Label>{t("Nombre")}</Label>
@@ -598,20 +606,31 @@ export function FileManagerPage({
               <Dropdown.Item id="size" textValue={t("Tamaño")}>
                 <Label>{t("Tamaño")}</Label>
               </Dropdown.Item>
+              {clientOnly && (
+                <Dropdown.Item id="direction" textValue={t("Cambiar sentido de ordenación")}>
+                  <Label>
+                    {sorting.order === "asc"
+                      ? t("Cambiar a descendente")
+                      : t("Cambiar a ascendente")}
+                  </Label>
+                </Dropdown.Item>
+              )}
             </Dropdown.Menu>
           </Dropdown.Popover>
         </Dropdown>
-        <Button
-          size="sm"
-          variant="secondary"
-          aria-label={t("Cambiar sentido de ordenación")}
-          onPress={() =>
-            changeSorting({ ...sorting, order: sorting.order === "asc" ? "desc" : "asc" })
-          }
-        >
-          {sorting.order === "asc" ? t("Ascendente") : t("Descendente")}
-        </Button>
-        {pane === "primary" && !search.split ? (
+        {!clientOnly && (
+          <Button
+            size="sm"
+            variant="secondary"
+            aria-label={t("Cambiar sentido de ordenación")}
+            onPress={() =>
+              changeSorting({ ...sorting, order: sorting.order === "asc" ? "desc" : "asc" })
+            }
+          >
+            {sorting.order === "asc" ? t("Ascendente") : t("Descendente")}
+          </Button>
+        )}
+        {!clientOnly && pane === "primary" && !search.split ? (
           <Button
             isIconOnly
             size="sm"

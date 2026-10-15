@@ -4597,7 +4597,13 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    channelIds: number[];
+                };
+            };
+        };
         responses: {
             /** @description The request has succeeded. */
             200: {

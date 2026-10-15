@@ -62,7 +62,7 @@ export function SettingsRow({
 }) {
   return (
     <div
-      className={`grid gap-3 border-border border-b px-5 py-4 last:border-b-0 md:grid-cols-[minmax(0,1fr)_minmax(16rem,24rem)] ${
+      className={`settings-row grid gap-3 border-border border-b px-5 py-4 last:border-b-0 md:grid-cols-[minmax(0,1fr)_minmax(16rem,24rem)] ${
         align === "start" ? "md:items-start" : "md:items-center"
       }`}
     >

@@ -12,9 +12,11 @@ import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { SettingsPageHeader, SettingsRow, SettingsSection } from "@/components/settings-layout";
 import { newIdempotencyKey } from "@/features/shared/idempotency";
 import { getQueryClient } from "@/lib/queryClient";
+import { clientOnly } from "@/lib/client-runtime";
+import { ClientChannels } from "@/components/client-channels";
 
 export const Route = createFileRoute("/_settings/settings/channels")({
-  component: ChannelsSettings,
+  component: () => (clientOnly ? <ClientChannels /> : <ChannelsSettings />),
   pendingComponent: () => (
     <div className="flex justify-center py-16">
       <Spinner size="lg" />
@@ -63,6 +65,13 @@ function ChannelsSettings() {
               try {
                 await sync.mutateAsync({
                   params: { header: { "Idempotency-Key": newIdempotencyKey() } },
+                  body: {
+                    channelIds: (
+                      await getQueryClient().fetchQuery(
+                        $api.queryOptions("get", "/v1/channels/discover"),
+                      )
+                    ).map((channel) => channel.id),
+                  },
                 });
                 await refresh();
                 toast.success(t("Canales sincronizados"));
@@ -140,9 +149,17 @@ function ChannelsSettings() {
                     size="sm"
                     variant="secondary"
                     onPress={async () => {
-                      await select.mutateAsync({ params: { path: { channelId: channel.id } } });
-                      await refresh();
+                      try {
+                        await select.mutateAsync({ params: { path: { channelId: channel.id } } });
+                        await refresh();
+                        toast.success(t("Canal seleccionado"));
+                      } catch (error) {
+                        toast.error(t("No se pudo seleccionar el canal"), {
+                          description: userMessage(error),
+                        });
+                      }
                     }}
+                    isDisabled={select.isPending}
                   >
                     {t("Usar canal")}
                   </Button>

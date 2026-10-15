@@ -22,6 +22,10 @@ model DiscoveredChannel {
   id: int64;
   name: string;
 }
+model ChannelSyncRequest {
+  @maxItems(200)
+  channelIds: int64[];
+}
 model ChannelCreateRequest {
   /** Optional display name. Telegram may choose the final title. */
   @maxLength(120)
@@ -75,7 +79,7 @@ namespace Channels {
   @post
   @route("/sync")
   @operationId("syncChannels")
-  op sync(...IdempotencyHeader):
+  op sync(...IdempotencyHeader, @body body: ChannelSyncRequest):
     | JsonResponse<200, ChannelSummary[]>
     | ErrorResponse<401>
     | ErrorResponse<422>

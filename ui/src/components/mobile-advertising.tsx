@@ -187,6 +187,7 @@ export function MobileAdvertising() {
             adId,
             adSize: BannerAdSize.ADAPTIVE_BANNER,
             position: BannerAdPosition.BOTTOM_CENTER,
+            margin: Math.ceil(document.querySelector('.client-bottom-nav')?.getBoundingClientRect().height ?? 56),
             isTesting: !live,
             npa: true,
           });

@@ -245,7 +245,7 @@ export function UploadShelf() {
     <Card
       data-testid="upload-shelf"
       className="fixed inset-x-3 bottom-3 z-40 gap-0 border border-border bg-surface/95 shadow-2xl backdrop-blur-xl sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-[30rem]"
-      style={{ bottom: "calc(var(--client-ad-space, 0px) + max(0.75rem, env(safe-area-inset-bottom)))" }}
+      style={{ bottom: "calc(var(--client-nav-space, 0px) + var(--client-ad-space, 0px) + max(0.75rem, env(safe-area-inset-bottom)))" }}
     >
       <Card.Header className="px-4 py-3">
         <div className="flex w-full items-center gap-3">

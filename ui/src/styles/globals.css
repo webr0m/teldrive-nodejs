@@ -377,9 +377,61 @@ foliate-view::part(foot) {
 }
 
 /* Client layouts reserve system bars without affecting the desktop web app. */
+html[data-client="mobile"] {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  --client-nav-space: 3.5rem;
+}
+html[data-client="mobile"] body,
+html[data-client="mobile"] #root {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
 html[data-client="mobile"] .client-shell {
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  box-sizing: border-box;
+}
+html[data-client="mobile"] .client-app-header { min-height: 3.5rem; }
+html[data-client="mobile"] .client-main { overscroll-behavior-y: contain; }
+html[data-client="mobile"] .client-main > div { min-width: 0; }
+html[data-client="mobile"] input,
+html[data-client="mobile"] select,
+html[data-client="mobile"] textarea { font-size: 16px; max-width: 100%; }
+html[data-client="mobile"] .file-browser-header { flex-wrap: wrap; }
+html[data-client="mobile"] .file-browser-controls {
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+}
+html[data-client="mobile"] [role="dialog"] {
+  min-width: 0;
+  max-width: calc(100vw - 1.5rem);
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 1.5rem);
+  overflow-wrap: anywhere;
+}
+html[data-client="mobile"] .client-main header { margin-bottom: 1rem; }
+html[data-client="mobile"] .client-main h1 { overflow-wrap: anywhere; }
+html[data-client="mobile"] .client-main p { overflow-wrap: anywhere; }
+html[data-client="mobile"] .client-main .settings-row { grid-template-columns: minmax(0, 1fr); }
+html[data-client="mobile"] [data-testid="upload-shelf"] {
+  max-width: calc(100vw - 1.5rem);
+  max-height: calc(100dvh - var(--client-nav-space) - var(--client-ad-space, 0px) - 6rem);
+}
+html[data-client="mobile"] .client-bottom-nav a { touch-action: manipulation; }
+html[data-client="mobile"] .client-bottom-nav { z-index: 20; }
+@media (max-width: 380px) {
+  html[data-client="mobile"] .client-main { padding-inline: 0.5rem; }
+  html[data-client="mobile"] .client-main [class*="px-5"] { padding-inline: 0.75rem; }
+  html[data-client="mobile"] .client-main [class*="grid-cols-3"] { grid-template-columns: minmax(0, 1fr); }
 }
 html[data-client="mobile"] [data-content-viewer] {
   padding-top: env(safe-area-inset-top, 0px);

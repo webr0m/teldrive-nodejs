@@ -1785,6 +1785,20 @@ paths:
         missing rows.
       parameters:
         - $ref: "#/components/parameters/IdempotencyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channelIds]
+              properties:
+                channelIds:
+                  type: array
+                  maxItems: 200
+                  items:
+                    type: integer
+                    format: int64
       responses:
         "200":
           description: The request has succeeded.

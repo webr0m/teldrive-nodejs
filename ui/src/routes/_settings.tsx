@@ -87,6 +87,12 @@ function SettingsLayout() {
     undefined,
   );
 
+  if (clientOnly)
+    return (
+      <div className="mx-auto w-full min-w-0 max-w-2xl">
+        <Outlet />
+      </div>
+    );
   return (
     <div className="mx-auto grid w-full max-w-7xl gap-6 lg:grid-cols-[15rem_minmax(0,1fr)]">
       <aside className="hidden lg:block">
@@ -202,6 +208,10 @@ function settingsGroupsFor(capabilities: string[]): SettingsGroup[] {
   const allowed = new Set(capabilities);
   return SETTINGS_GROUPS.map((group) => ({
     label: group.label,
-    items: group.items.filter((item) => (!clientOnly || clientSettingsPaths.has(item.path)) && (!("capability" in item) || allowed.has(item.capability))),
+    items: group.items.filter(
+      (item) =>
+        (!clientOnly || clientSettingsPaths.has(item.path)) &&
+        (!("capability" in item) || allowed.has(item.capability)),
+    ),
   })).filter((group) => group.items.length > 0) as SettingsGroup[];
 }

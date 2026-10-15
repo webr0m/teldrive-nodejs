@@ -13,9 +13,10 @@ const challenge = value => createHash('sha256').update(value).digest('base64url'
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 export function assertClientAccess(principal, method, pathname) {
   if (principal.session?.scope !== 'client' && !principal.user?.clientOnly) return;
-  // Bots remain personal client functionality. Reading channels supports their picker.
+  // Personal storage selection is available; channel creation/deletion stay on the server UI.
+  const channelSelection = method === 'POST' && (/^\/api\/v1\/channels\/-?\d+\/select$/.test(pathname) || pathname === '/api/v1/channels/sync');
   if (/^\/api\/v1\/(admin|jobs|api-keys|rclone)(\/|$)/.test(pathname) ||
-      (/^\/api\/v1\/channels(\/|$)/.test(pathname) && method !== 'GET'))
+      (/^\/api\/v1\/channels(\/|$)/.test(pathname) && method !== 'GET' && !channelSelection))
     fail(403, 'client_session_only', 'Esta sesión móvil no permite administrar el servidor.');
 }
 export class Mobile {

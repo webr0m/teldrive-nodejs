@@ -6,7 +6,9 @@ Cliente compartido React + Capacitor 8, con recursos incluidos en la aplicación
 
 - Archivos, búsqueda, carpetas, subidas con reintentos, descarga mediante el guardado/compartir del sistema, lectores y reproducción según formatos admitidos.
 - Compartidos propios y conmigo, enlaces reutilizables, papelera, spam y estadísticas de la cuenta.
-- **Bots personales conservados**, sesiones, apariencia, idioma y preferencias de subida. Sin rclone, montaje, claves de API, usuarios/permisos, canales editables, tareas del servidor ni sus límites.
+- **Bots personales conservados**, selección del canal de la unidad, sesiones, apariencia, idioma y preferencias de subida. Sin rclone, montaje, claves de API, usuarios/permisos, creación/eliminación de canales, tareas del servidor ni sus límites.
+- Navegación de aplicación con barra inferior: Archivos, Compartidos, Ajustes y Más. Ajustes agrupa las preferencias por cuenta, transferencias y ayuda; Más reúne las secciones secundarias sin repetir los accesos principales. La edición móvil no muestra vista dividida ni menús de escritorio.
+- Diseño acotado a la pantalla, zonas seguras, teclados sin zoom automático de iOS, diálogos con desplazamiento y acciones de selección compactas. Verificado a 320×568, 390×844 y 844×390 con Chromium móvil y WebKit.
 - Recorrido al primer acceso por cuenta, omitir/anterior/siguiente y repetición desde Ayuda. Manual buscable incluido en el paquete, accesible también desde el login (`/manual`) sin conexión al servidor.
 - Sesiones nativas en Keychain/Android Keystore mediante Secure Storage; nunca en el almacenamiento web sin cifrar. Los medios y descargas usan permisos temporales para un archivo, sin poner el token de la cuenta en la URL.
 
@@ -37,6 +39,12 @@ El workflow **Mobile builds** produce APK de prueba, AAB sin firma de distribuci
 Usa código de autorización, PKCE en ambas etapas, estado, nonce, cookie de navegador y firma/audiencia/emisor/caducidad del ID token. Los estados caducan en diez minutos y se consumen una vez. No se guarda el token de Google. Los vínculos y flujos se cifran en `DATA_DIR/mobile/catalog.db`, fuera del esquema compartido con Go. Para migrar de servidor, copiar **todo DATA_DIR y conservar DATA_KEY**, además de la base compartida.
 
 Google permanece desactivado si faltan las credenciales. Esto permite probar Telegram sin inventar una configuración OAuth.
+
+## Canal de la unidad
+
+En Ajustes → Canales de Telegram se puede elegir un canal registrado o buscar los canales administrables de la cuenta, importar uno y seleccionarlo. La selección se guarda en el servidor por usuario. Solo las subidas que empiecen después del cambio usarán el nuevo canal; los archivos anteriores no se trasladan ni se eliminan. La cuenta y sus bots deben conservar el acceso a los canales originales para leer los archivos anteriores.
+
+La API móvil permite consultar, sincronizar canales descubiertos por Telegram y seleccionar un canal propio. Sigue rechazando la creación y eliminación de canales y el acceso a la administración del servidor. Las pruebas comprueban que no se puede seleccionar ni importar el canal de otro usuario. El manual y el recorrido incluidos explican esta función.
 
 ## Publicidad propia remota
 

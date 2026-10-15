@@ -1,5 +1,6 @@
 import { t } from "@/lib/localization";
-import { Button } from "@heroui/react";
+import { Button, Dropdown, Label } from "@heroui/react";
+import { clientOnly } from "@/lib/client-runtime";
 import DownloadIcon from "~icons/gravity-ui/arrow-down-to-line";
 import CopyIcon from "~icons/gravity-ui/copy";
 import CopyLinkIcon from "~icons/gravity-ui/copy-arrow-right";
@@ -44,6 +45,87 @@ export function FileSelectionToolbar({
   const selectedCount = selectedFiles.length;
   const singleSelectedFile = selectedCount === 1 ? selectedFiles[0] : undefined;
   const selectedOnlyFiles = selectedFiles.every((file) => file.kind === "file");
+
+  if (clientOnly) {
+    const actions = [
+      { id: "cut", label: "Cortar", run: onCut },
+      { id: "copy", label: "Copiar", run: onCopy },
+      { id: "rename", label: "Renombrar", run: singleSelectedFile ? onRename : undefined },
+      { id: "duplicate", label: "Duplicar", run: onDuplicate },
+      {
+        id: "links",
+        label: "Copiar enlaces de descarga",
+        run: selectedOnlyFiles ? onCopyDownloadLinks : undefined,
+      },
+      { id: "move", label: "Mover", run: onMove },
+      { id: "trash", label: "Enviar a la papelera", run: onTrash },
+      { id: "spam", label: "Marcar como spam", run: onSpam },
+    ].filter((action) => action.run);
+    return (
+      <div className="pointer-events-none absolute inset-x-0 bottom-3 z-30 px-2">
+        <fieldset
+          aria-label={t("Acciones de archivos seleccionados")}
+          className="pointer-events-auto flex min-w-0 flex-wrap items-center gap-1 rounded-2xl border border-border bg-surface p-2 shadow-xl"
+        >
+          <span className="min-w-0 flex-1 px-1 text-xs font-medium">
+            {selectedCount} {t("seleccionados")}
+          </span>
+          {singleSelectedFile && onShare && (
+            <Button
+              isIconOnly
+              variant="ghost"
+              aria-label={t("Compartir")}
+              isDisabled={pending}
+              onPress={onShare}
+            >
+              <LinkIcon className="size-4" />
+            </Button>
+          )}
+          {selectedOnlyFiles && onDownload && (
+            <Button
+              isIconOnly
+              variant="ghost"
+              aria-label={t("Descargar")}
+              isDisabled={pending}
+              onPress={onDownload}
+            >
+              <DownloadIcon className="size-4" />
+            </Button>
+          )}
+          <Dropdown>
+            <Button
+              variant="secondary"
+              isDisabled={pending}
+              aria-label={t("Más acciones de selección")}
+            >
+              {t("Más")}
+            </Button>
+            <Dropdown.Popover>
+              <Dropdown.Menu
+                aria-label={t("Acciones de archivos seleccionados")}
+                onAction={(key) => actions.find((action) => action.id === key)?.run?.()}
+              >
+                {actions.map((action) => (
+                  <Dropdown.Item key={action.id} id={action.id} textValue={t(action.label)}>
+                    <Label>{t(action.label)}</Label>
+                  </Dropdown.Item>
+                ))}
+              </Dropdown.Menu>
+            </Dropdown.Popover>
+          </Dropdown>
+          <Button
+            isIconOnly
+            variant="ghost"
+            aria-label={t("Borrar selección")}
+            isDisabled={pending}
+            onPress={onClear}
+          >
+            <CloseIcon className="size-4" />
+          </Button>
+        </fieldset>
+      </div>
+    );
+  }
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center px-4">

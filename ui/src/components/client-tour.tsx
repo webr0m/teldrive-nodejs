@@ -36,7 +36,7 @@ export function ClientTour() {
       isDismissable
       data-client-tour
     >
-      <Modal.Container size="sm">
+      <Modal.Container size="sm" scroll="inside">
         <Modal.Dialog>
           <Modal.Header>
             <div>

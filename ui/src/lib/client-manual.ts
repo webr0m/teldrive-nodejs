@@ -12,11 +12,23 @@ export const clientManual = [
     ],
   },
   {
+    id: "canales",
+    title: "Elegir el canal de tu unidad",
+    summary: "Selecciona el canal de Telegram donde se guardarán tus nuevas subidas.",
+    steps: [
+      "Abre Ajustes en la barra inferior y entra en Canales de Telegram. El canal marcado En uso es el destino de las nuevas subidas.",
+      "Pulsa Buscar canales en Telegram para consultar los canales disponibles de tu cuenta. Pulsa Usar canal para guardar tu elección. Tu cuenta y los bots necesitan los permisos correspondientes en ese canal.",
+      "Cambiar de canal no mueve ni elimina los archivos existentes: seguirán disponibles en la misma unidad. Las transferencias que ya comenzaron conservan su canal original.",
+      "La selección es una preferencia de tu cuenta en el servidor, no un montaje en el teléfono. Si compartes la misma cuenta y servidor en otras instalaciones, ten en cuenta esta preferencia al iniciar nuevas subidas.",
+    ],
+  },
+  {
     id: "archivos",
     title: "Archivos y carpetas",
     summary: "Explora, busca y organiza tu unidad desde el teléfono.",
     steps: [
-      "Toca una carpeta para entrar y utiliza la ruta para volver. Cambia entre lista y cuadrícula según tu preferencia.",
+      "La barra inferior reúne Archivos, Compartidos, Ajustes y Más. Más contiene Compartido conmigo, Papelera, Spam y Almacenamiento; cada opción aparece una sola vez.",
+      "Toca una carpeta para entrar y utiliza la ruta para volver. Vista permite cambiar entre lista y cuadrícula. Ordenar reúne el criterio y el sentido de ordenación.",
       "Selecciona un elemento y abre su menú de acciones para renombrarlo, moverlo, copiarlo, compartirlo o enviarlo a la papelera.",
       "El buscador encuentra nombres dentro de la ubicación seleccionada. Puedes ajustar los filtros y el orden.",
       "La papelera permite restaurar elementos. El borrado definitivo no se puede deshacer; revisa siempre la selección.",

@@ -70,6 +70,20 @@ test('mobile OAuth binds browser and PKCE, links only explicitly and preserves c
   assert.equal(store.get('users', '1').role, 'owner', 'mobile does not mutate the account role');
   for (const [route, method] of [['/admin/settings', 'GET'], ['/jobs', 'GET'], ['/api-keys', 'GET'], ['/rclone/actions', 'POST'], ['/channels', 'POST']]) assert.equal((await request(route, method, method === 'POST' ? {} : undefined, pair.accessToken)).status, 403, route);
   assert.equal((await request('/bots', 'GET', undefined, pair.accessToken, mobileHeaders)).status, 200, 'personal bots remain available');
+  for (const channel of [
+    { id: '101', ownerId: '1', name: 'Original', selected: true },
+    { id: '102', ownerId: '1', name: 'Nueva unidad', selected: false },
+    { id: '103', ownerId: '2', name: 'Otro usuario', selected: false },
+  ]) store.put('channels', channel);
+  assert.equal((await request('/channels/102/select', 'POST', {}, pair.accessToken, mobileHeaders)).status, 200, 'client can select its own storage channel');
+  assert.equal(store.get('channels', '1:102').selected, true);
+  assert.equal(store.get('channels', '1:101').selected, false);
+  assert.equal((await request('/channels/103/select', 'POST', {}, pair.accessToken, mobileHeaders)).status, 404, 'client cannot select another user channel');
+  assert.equal((await request('/channels/102', 'DELETE', undefined, pair.accessToken, mobileHeaders)).status, 403, 'channel deletion remains unavailable in the client');
+  app.context.telegram.discover = async () => [{ id: '104', name: 'Canal descubierto' }];
+  assert.equal((await request('/channels/sync', 'POST', { channelIds: [104] }, pair.accessToken, mobileHeaders)).status, 200, 'client can import an available personal channel');
+  assert.equal(store.get('channels', '1:104').ownerId, '1');
+  assert.equal((await request('/channels/sync', 'POST', { channelIds: [103] }, pair.accessToken, mobileHeaders)).status, 404, 'only channels discovered for this account can be imported');
   assert.equal((await request('/files', 'GET', undefined, pair.accessToken, mobileHeaders)).status, 200);
   const refreshed = await request('/auth/refresh', 'POST', { refreshToken: pair.refreshToken }, undefined, mobileHeaders); assert.equal(refreshed.status, 200); pair = await refreshed.json();
   profile = await (await request('/me', 'GET', undefined, pair.accessToken, mobileHeaders)).json(); assert.equal(profile.clientOnly, true);
