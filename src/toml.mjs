@@ -12,6 +12,8 @@ const mappings = {
   'node.database-transport': 'DATABASE_TRANSPORT', 'node.supabase-url': 'SUPABASE_URL', 'node.supabase-key': 'SUPABASE_SECRET_KEY',
   'node.upstream-url': 'UPSTREAM_URL', 'node.cors-origins': 'CORS_ORIGINS',
   'node.allow-iframe': 'ALLOW_IFRAME', 'node.demo-auth': 'DEMO_AUTH',
+  'node.google.client-id': 'GOOGLE_CLIENT_ID', 'node.google.client-secret': 'GOOGLE_CLIENT_SECRET',
+  'node.mobile.ads-config-url': 'MOBILE_ADS_CONFIG_URL', 'node.mobile.privacy-url': 'MOBILE_PRIVACY_URL', 'node.mobile.support-url': 'MOBILE_SUPPORT_URL',
   'node.limits.part-size': 'PART_SIZE', 'node.limits.max-file-size': 'MAX_FILE_SIZE',
   'node.limits.concurrent-transfers': 'MAX_CONCURRENT_TRANSFERS',
   'node.rclone.executable': 'RCLONE_EXECUTABLE', 'node.rclone.mount-root': 'RCLONE_MOUNT_ROOT', 'node.rclone.mount-enabled': 'RCLONE_MOUNT_ENABLED', 'node.rclone.agent-origin': 'RCLONE_AGENT_ORIGIN',

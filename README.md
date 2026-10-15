@@ -1,5 +1,7 @@
 # Teldrive Node.js
 
+La edición móvil Android/iOS, Google vinculado a Telegram, publicidad y manual se documentan en [MOBILE.md](docs/MOBILE.md). La preparación de las tiendas está en [STORE-LISTING.md](docs/STORE-LISTING.md).
+
 Port inicial del núcleo web de [webr0m/teldrive](https://github.com/webr0m/teldrive). Reutiliza la interfaz React de la rama `teldrive-v2-drive-es`, commit `e970c75502711abccdfe57c7fe2ae8961c5ed1d1`, con sus estilos, traducciones y visores. Añade **Configuración → Límites del servidor** dentro de esa misma interfaz, un servidor Node.js con MTProto y un modo opcional de pasarela.
 
 **Versión inicial: no es un port completo ni un reemplazo validado de todos los clientes de Teldrive.** Consulta [el estado de la migración](docs/MIGRATION.md) antes de usar una base existente. Las transferencias reales con Telegram y el hosting de destino necesitan validación con las credenciales del propietario.
@@ -10,7 +12,6 @@ Node.js 24. Instala y compila la interfaz antes de iniciar:
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm --dir ui install --ignore-workspace --frozen-lockfile
 pnpm --dir ui run build
 pnpm run demo
 ```

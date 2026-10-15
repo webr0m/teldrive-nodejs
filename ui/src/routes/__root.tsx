@@ -42,6 +42,9 @@ import { currentUserQueryOptions } from "../auth/queries";
 import { UploadShelf } from "../components/upload-shelf";
 import { StorageSummary } from "../components/storage-summary";
 import { getQueryClient } from "../lib/queryClient";
+import { clientOnly, clientPathAllowed, apiUrl } from "@/lib/client-runtime";
+import { ClientTour } from "@/components/client-tour";
+import { MobileAdvertising } from "@/components/mobile-advertising";
 
 const mainNav = [
   { label: t("Archivos"), icon: GridIcon, path: "/files" },
@@ -82,7 +85,7 @@ function Sidebar({
   const { data: user } = useQuery(currentUserQueryOptions());
   const logout = $api.useMutation("post", "/v1/auth/cookie/logout");
   const visibleMainNav = mainNav.filter(
-    (item) => !("capability" in item) || Boolean(user?.capabilities.includes(item.capability)),
+    (item) => (!clientOnly || clientPathAllowed(item.path)) && (!("capability" in item) || Boolean(user?.capabilities.includes(item.capability))),
   );
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const displayName =
@@ -190,7 +193,7 @@ function Sidebar({
           {collapsed && !mobile ? (
             <Dropdown.Trigger className="flex size-10 items-center justify-center rounded-full hover:bg-default/30">
               <Avatar className="size-8 cursor-pointer">
-                <Avatar.Image alt={displayName} src="/api/v1/me/photo" />
+                <Avatar.Image alt={displayName} src={apiUrl("/api/v1/me/photo")} />
                 <Avatar.Fallback>{initials}</Avatar.Fallback>
               </Avatar>
             </Dropdown.Trigger>
@@ -201,7 +204,7 @@ function Sidebar({
               className="flex h-14 w-full items-center justify-start gap-3 rounded-xl px-2 text-muted hover:bg-default/30 hover:text-foreground"
             >
               <Avatar className="size-9 shrink-0">
-                <Avatar.Image alt={displayName} src="/api/v1/me/photo" />
+                <Avatar.Image alt={displayName} src={apiUrl("/api/v1/me/photo")} />
                 <Avatar.Fallback>{initials}</Avatar.Fallback>
               </Avatar>
               <div className="min-w-0 overflow-hidden whitespace-nowrap text-left">
@@ -449,14 +452,14 @@ function Layout() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  if (pathname === "/login" || pathname === "/cast" || pathname.startsWith("/share/"))
+  if (pathname === "/login" || pathname === "/manual" || pathname === "/cast" || pathname.startsWith("/share/"))
     return <Outlet />;
   return (
     <AriaRouterProvider
       navigate={(path) => navigate({ to: String(path) })}
       useHref={(path) => String(path)}
     >
-      <div className="flex h-dvh w-full overflow-hidden bg-background text-foreground">
+      <div className={cn("flex h-dvh w-full overflow-hidden bg-background text-foreground", clientOnly && "client-shell")}>
         {desktop && <Sidebar collapsed={collapsed} />}
         {!desktop && mobileOpen && (
           <div
@@ -497,8 +500,10 @@ function Layout() {
           <main className="min-w-0 flex-1 select-none overflow-y-auto px-3 py-4 sm:px-5 sm:py-5 lg:px-7 lg:py-6">
             <Outlet />
           </main>
+          {clientOnly && <MobileAdvertising />}
         </div>
         <UploadShelf />
+        {clientOnly && <ClientTour />}
       </div>
     </AriaRouterProvider>
   );
@@ -510,6 +515,7 @@ export type RouterContext = {
 
 export const Route = createRootRouteWithContext<RouterContext>()({
   beforeLoad: async ({ context, location }) => {
+    if (!clientPathAllowed(location.pathname)) throw redirect({ to: "/settings", replace: true });
     if (location.pathname === "/my-drive" || location.pathname === "/recent") {
       throw redirect({
         to: "/files",
@@ -525,7 +531,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     if (location.pathname === "/settings/account")
       throw redirect({ to: "/settings", replace: true });
     if (
-      location.pathname === "/login" ||
+      location.pathname === "/login" || location.pathname === "/manual" ||
       location.pathname === "/cast" ||
       location.pathname.startsWith("/share/")
     )

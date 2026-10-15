@@ -41,6 +41,9 @@ export function config(env = process.env) {
     legacyKeyring: env.LEGACY_KEYRING ? JSON.parse(env.LEGACY_KEYRING) : {},
     encryptionKeyVersion: Number(env.ENCRYPTION_KEY_VERSION || 1),
     ownerUserId: env.OWNER_USER_ID,
+    googleClientId: env.GOOGLE_CLIENT_ID || '', googleClientSecret: env.GOOGLE_CLIENT_SECRET || '',
+    mobileAdsUrl: env.MOBILE_ADS_CONFIG_URL || '',
+    mobilePrivacyUrl: env.MOBILE_PRIVACY_URL || '', mobileSupportUrl: env.MOBILE_SUPPORT_URL || '',
     allowedUsers: (env.ALLOWED_USERS || '').split(',').map(s => s.trim()).filter(Boolean),
     publicUrl: new URL(env.PUBLIC_URL || `http://127.0.0.1:${env.PORT || 3000}`).origin,
     cors: (env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean),
@@ -62,6 +65,11 @@ export function config(env = process.env) {
     jsonMaxBytes: integer('JSON_MAX_BYTES', 1048576, 4096, 16777216),
   };
   if (!['native', 'gateway'].includes(c.mode)) throw new Error('MODE must be native or gateway');
+  if (!!c.googleClientId !== !!c.googleClientSecret) throw new Error('Configure both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET');
+  for (const value of [c.mobileAdsUrl, c.mobilePrivacyUrl, c.mobileSupportUrl].filter(Boolean)) {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password || url.hash) throw new Error('Mobile remote configuration requires HTTPS URLs without credentials or fragments');
+  }
   const agent = new URL(c.rcloneAgentOrigin);
   if (!['127.0.0.1','localhost','[::1]'].includes(agent.hostname) || !['http:','https:'].includes(agent.protocol) || agent.username || agent.password || agent.pathname !== '/' || agent.search || agent.hash) throw new Error('RCLONE_AGENT_ORIGIN must be a loopback HTTP(S) origin');
   c.rcloneAgentOrigin = agent.origin;

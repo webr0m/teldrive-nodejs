@@ -5,6 +5,7 @@ import { apiFetch } from "@/api/client";
 import { userMessage } from "@/api/errors";
 import type { FileEntry } from "@/api/types";
 import { CastDialog } from "./cast-dialog";
+import { apiUrl } from "@/lib/client-runtime";
 import type { AirPlayVideo } from "@/lib/casting";
 
 const VideoViewer = lazy(() => import("./video-viewer").then((m) => ({ default: m.VideoViewer })));
@@ -17,7 +18,7 @@ export function playbackUrl(
   subtitle?: number,
   video?: number,
 ) {
-  return `/api/v1/playback?${new URLSearchParams({ ticket, mode, start: String(start), ...(audio !== undefined ? { audio: String(audio) } : {}), ...(subtitle !== undefined ? { subtitle: String(subtitle) } : {}), ...(video !== undefined ? { video: String(video) } : {}) })}`;
+  return apiUrl(`/api/v1/playback?${new URLSearchParams({ ticket, mode, start: String(start), ...(audio !== undefined ? { audio: String(audio) } : {}), ...(subtitle !== undefined ? { subtitle: String(subtitle) } : {}), ...(video !== undefined ? { video: String(video) } : {}) })}`);
 }
 type Track = {
   index: number;
@@ -212,7 +213,7 @@ export function CompatibleMedia({
                   ? [
                       {
                         id: `embedded-${subtitle}`,
-                        src: `/api/v1/playback/subtitles?${new URLSearchParams({ ticket: grant.ticket, track: String(subtitle), start: String(converted ? sourceStart : 0) })}`,
+                        src: apiUrl(`/api/v1/playback/subtitles?${new URLSearchParams({ ticket: grant.ticket, track: String(subtitle), start: String(converted ? sourceStart : 0) })}`),
                         lang: tracks.find((track) => track.index === subtitle)?.language || "und",
                         label: t("Pista seleccionada"),
                         default: true,

@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { SettingsPageHeader, SettingsRow, SettingsSection } from "@/components/settings-layout";
 import { buildInfo } from "@/lib/version";
 import { isDesktop } from "@/lib/desktop";
+import { nativeClient, serverOrigin } from "@/lib/client-runtime";
 
 export const Route = createFileRoute("/_settings/settings/info")({ component: Information });
 
@@ -27,11 +28,11 @@ function Information() {
           <span className="text-sm">{new Date(buildInfo.date).toLocaleString("es")}</span>
         </SettingsRow>
         <SettingsRow label={t("Servidor conectado")}>
-          <span className="break-all text-sm">{window.location.origin}</span>
+          <span className="break-all text-sm">{serverOrigin}</span>
         </SettingsRow>
         <SettingsRow label={t("Interfaz actual")}>
           <span className="text-sm">
-            {isDesktop() ? t("Teldrive Desktop para Windows") : t("Interfaz web o app móvil")}
+            {nativeClient ? t("Teldrive Cliente para Android e iOS") : isDesktop() ? t("Teldrive Desktop para Windows") : t("Interfaz web")}
           </span>
         </SettingsRow>
       </SettingsSection>

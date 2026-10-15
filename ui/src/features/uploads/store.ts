@@ -1,6 +1,8 @@
 import { t } from "@/lib/localization";
 import { create } from "zustand";
 import { apiFetch, refreshCookieSession } from "@/api/client";
+import { apiUrl } from "@/lib/client-runtime";
+import { clientHeaders, restoreNativeSession } from "@/lib/native-session";
 import { retryUploadPart } from "./retry";
 import { invalidResponse, normalizeApiError, userMessage } from "@/api/errors";
 import type { FileEntry, NameConflictPolicy, UploadPart, UploadSession } from "@/api/types";
@@ -337,17 +339,19 @@ async function resolveTaskParent(task: UploadTask, signal: AbortSignal) {
   return parentId;
 }
 
-function uploadPart(
+async function uploadPart(
   uploadId: string,
   partNo: number,
   body: Blob,
   signal: AbortSignal,
   onProgress: (uploadedBytes: number) => void,
 ) {
+  await restoreNativeSession();
   return new Promise<void>((resolve, reject) => {
     const request = new XMLHttpRequest();
     const abort = () => request.abort();
-    request.open("PUT", `/api/v1/uploads/${encodeURIComponent(uploadId)}/parts/${partNo}`);
+    request.open("PUT", apiUrl(`/api/v1/uploads/${encodeURIComponent(uploadId)}/parts/${partNo}`));
+    clientHeaders().forEach((value, key) => request.setRequestHeader(key, value));
     request.setRequestHeader("Content-Type", "application/octet-stream");
     request.upload.addEventListener("progress", (event) => {
       if (event.lengthComputable) onProgress(Math.min(event.loaded, body.size));

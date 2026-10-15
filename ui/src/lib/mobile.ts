@@ -1,4 +1,5 @@
 import { t } from "@/lib/localization";
+import { nativeClient, serverOrigin } from "./client-runtime";
 type MobileRequest = {
   id: string;
   method: "download" | "save";
@@ -16,6 +17,7 @@ const pending = new Map<
   string,
   { resolve: () => void; reject: (error: Error) => void; timeout: ReturnType<typeof setTimeout> }
 >();
+const activeCacheFiles = new Set<string>();
 
 /** Returns false in a normal browser; native apps stream directly to device storage. */
 export async function nativeFileDownload(
@@ -23,6 +25,24 @@ export async function nativeFileDownload(
   filename: string,
   headers: HeadersInit = {},
 ): Promise<boolean> {
+  if (nativeClient) {
+    if (new URL(url).origin !== serverOrigin) throw new Error(t("La descarga debe pertenecer al servidor conectado."));
+    const [{ Filesystem, Directory }, { FileTransfer }, { Share }] = await Promise.all([
+      import("@capacitor/filesystem"), import("@capacitor/file-transfer"), import("@capacitor/share"),
+    ]);
+    const name = filename.replace(/[\\/\x00-\x1f:*?"<>|]/g, "_").slice(0, 180) || "archivo";
+    const path = `teldrive-${crypto.randomUUID()}-${name}`;
+    const { uri } = await Filesystem.getUri({ directory: Directory.Cache, path });
+    activeCacheFiles.add(path);
+    try {
+      await FileTransfer.downloadFile({ url, path: uri, headers: Object.fromEntries(new Headers(headers)) });
+      await Share.share({ title: name, files: [uri] });
+    } catch (error) {
+      await Filesystem.deleteFile({ directory: Directory.Cache, path }).catch(() => {});
+      throw error;
+    } finally { activeCacheFiles.delete(path); }
+    return true;
+  }
   return nativeRequest({
     id: crypto.randomUUID(),
     method: "download",
@@ -36,6 +56,17 @@ export async function nativeTextSave(
   filename: string,
   mime = "text/plain",
 ): Promise<boolean> {
+  if (nativeClient) {
+    const [{ Filesystem, Directory, Encoding }, { Share }] = await Promise.all([import("@capacitor/filesystem"), import("@capacitor/share")]);
+    const path = `teldrive-${crypto.randomUUID()}-${filename.replace(/[\\/\x00-\x1f:*?"<>|]/g, "_").slice(0, 180)}`;
+    activeCacheFiles.add(path);
+    try {
+      const { uri } = await Filesystem.writeFile({ directory: Directory.Cache, path, data: contents, encoding: Encoding.UTF8 });
+      await Share.share({ title: filename, files: [uri] });
+    } catch (error) { await Filesystem.deleteFile({ directory: Directory.Cache, path }).catch(() => {}); throw error; }
+    finally { activeCacheFiles.delete(path); }
+    return true;
+  }
   return nativeRequest({ id: crypto.randomUUID(), method: "save", contents, filename, mime });
 }
 async function nativeRequest(request: MobileRequest): Promise<boolean> {
@@ -85,4 +116,14 @@ async function nativeRequest(request: MobileRequest): Promise<boolean> {
     }
   });
   return true;
+}
+
+export async function cleanClientCache(expiredOnly = false) {
+  if (!nativeClient) return 0;
+  const { Filesystem, Directory } = await import("@capacitor/filesystem");
+  const { files } = await Filesystem.readdir({ directory: Directory.Cache, path: "" }); let removed = 0;
+  for (const file of files) if (file.type === "file" && file.name.startsWith("teldrive-") && !activeCacheFiles.has(file.name) && (!expiredOnly || file.mtime < Date.now() - 86400000)) {
+    await Filesystem.deleteFile({ directory: Directory.Cache, path: file.name }); removed++;
+  }
+  return removed;
 }

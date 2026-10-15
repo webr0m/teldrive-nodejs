@@ -16,6 +16,7 @@ import { Shares } from './shares.mjs';
 import { Access } from './access.mjs';
 import { Jobs } from './jobs.mjs';
 import { Rclone } from './rclone.mjs';
+import { Mobile, assertClientAccess } from './mobile.mjs';
 import { Settings } from './settings.mjs';
 import { Playback } from './playback.mjs';
 import { Media } from './media.mjs';
@@ -46,6 +47,19 @@ const parentOwner = (c, parentId, ownerId = c.user.id) => {
 route('GET', '/api/health/live', () => result({ status: 'ok', version: `node-${packageInfo.version}` }), { public: true });
 route('GET', '/api/health/ready', c => { c.store.ready(); return result({ status: 'ok', version: `node-${packageInfo.version}` }); }, { public: true });
 route('GET', '/api/config', c => result({ mode: 'native', storage: c.config.backend, demo: c.config.demo, partSize: c.config.partSize, maxFileSize: c.config.maxFileSize, maxConcurrentTransfers: c.config.concurrency, uploadRetryAttempts: c.config.uploadRetryAttempts, rcloneAgentOrigin: c.config.rcloneAgentOrigin }), { public: true });
+route('GET', '/api/v1/mobile/config', c => result({ googleEnabled: c.mobile.enabled(), adsConfigUrl: c.config.mobileAdsUrl, privacyUrl: c.config.mobilePrivacyUrl, supportUrl: c.config.mobileSupportUrl }), { public: true });
+const optionalPrincipal = c => c.req.headers.authorization || cookies(c.req).teldrive_access ? c.auth.authenticate(c.req, c.query) : undefined;
+route('POST', '/api/v1/mobile/google/start', c => result(c.mobile.start(c.body, c.body.link ? optionalPrincipal(c) : undefined), 201), { public: true });
+route('GET', '/api/v1/mobile/google/authorize', c => result(undefined, 302, { Location: c.mobile.authorize(c.query.get('flow'), c.res) }), { public: true });
+route('GET', '/api/v1/mobile/google/callback', async c => {
+  const ok = await c.mobile.callback(c.query, c.req, c.res);
+  c.res.statusCode = ok ? 200 : 401; c.res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  c.res.setHeader('Content-Security-Policy', "default-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+  c.res.end(`<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Teldrive</title><h1>${ok ? 'Identidad de Google verificada' : 'No se completó el acceso'}</h1><p>Vuelve a Teldrive para continuar. Puedes cerrar esta ventana.</p></html>`);
+}, { public: true });
+route('POST', '/api/v1/mobile/google/complete', c => result(c.mobile.complete(c.body, c.body.link ? optionalPrincipal(c) : undefined, c.res)), { public: true });
+route('GET', '/api/v1/mobile/account', c => result(c.mobile.account(c.user.id)));
+route('DELETE', '/api/v1/mobile/account/google', c => { if(c.apiKey)fail(403,'session_required');c.mobile.unlink(c.user.id,c);return empty(); });
 route('POST', '/api/v1/rclone/actions', async c => {
   admin(c.user); if(c.apiKey) fail(403, 'session_required');
   if (c.body.method === 'rclone.connect') return result(await c.rclone.connectWeb(c.user.id, c.store, c.body.params));
@@ -67,7 +81,7 @@ for (const [suffix, type] of [['verify-code', 'code'], ['verify-password', 'pass
   for (const cookie of [false, true]) {
     route('POST', `/api/v1/auth/${cookie ? 'cookie/' : ''}telegram/${suffix}`, async c => {
       if (c.config.backend !== 'telegram') fail(503, 'telegram_not_configured');
-      const response = await c.telegram.verify(c.body.flowId, type, c.body[type], (me, session) => c.auth.finish(me, session));
+      const response = await c.telegram.verify(c.body.flowId, type, c.body[type], (me, session) => c.auth.finish(me, session, { scope: c.req.headers['x-teldrive-client'] === 'mobile' ? 'client' : 'full' }));
       return response.pending ? result(response.pending, 202) : result(c.auth.publish(response.pair, c.res, cookie));
     }, { public: true });
   }
@@ -300,21 +314,23 @@ export function createApp(config, overrides = {}) {
     context.jobs = new Jobs(store, uploads, config); context.jobs.start();
     context.rclone = new Rclone(config, { allowed: user => { const account = store.get('users', user); return !!account && !account.disabled && ['owner','admin'].includes(account.role); } }); context.rclone.start();
     context.media = new Media(config, context.playback); context.playback.media = context.media;
+    context.mobile = new Mobile(config, auth, overrides.mobile);
   }
-  const cleanupTimer = context ? setInterval(() => { void context.uploads.drainCleanup().catch(() => {}); }, 60000).unref() : undefined;
+  const cleanupTimer = context ? setInterval(() => { void context.uploads.drainCleanup().catch(() => {}); context.mobile.prune(); }, 60000).unref() : undefined;
   const server = http.createServer(async (req, res) => {
     const requestId = id(); res.setHeader('X-Request-Id', requestId); res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('Cache-Control', 'no-store');
     if (!config.allowIframe) res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     try {
       if (!req.url.startsWith('/') || req.url.startsWith('//')) fail(400, 'invalid_path');
       const url = new URL(req.url, config.publicUrl), origin = req.headers.origin;
-      if (origin && origin !== config.publicUrl && !config.cors.includes(origin)) fail(403, 'origin_not_allowed');
-      if (origin && config.cors.includes(origin)) { res.setHeader('Access-Control-Allow-Origin', origin); res.setHeader('Vary', 'Origin'); res.setHeader('Access-Control-Allow-Credentials', 'true'); res.setHeader('Access-Control-Expose-Headers', 'ETag,Content-Range,Accept-Ranges,Location'); }
-      if (req.method === 'OPTIONS') { res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS'); res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Api-Key,X-Share-Password,X-Part-Checksum,Idempotency-Key,If-Match,Range'); res.writeHead(204); res.end(); return; }
-      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && req.headers['sec-fetch-site'] === 'cross-site' && !config.cors.includes(origin)) fail(403, 'cross_site_request');
+      const mobileOrigin = ['capacitor://localhost', 'http://localhost', 'https://localhost'].includes(origin);
+      if (origin && origin !== config.publicUrl && !config.cors.includes(origin) && !mobileOrigin) fail(403, 'origin_not_allowed');
+      if (origin && (config.cors.includes(origin) || mobileOrigin)) { res.setHeader('Access-Control-Allow-Origin', origin); res.setHeader('Vary', 'Origin'); res.setHeader('Access-Control-Allow-Credentials', 'true'); res.setHeader('Access-Control-Expose-Headers', 'ETag,Content-Range,Accept-Ranges,Location'); }
+      if (req.method === 'OPTIONS') { res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS'); res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Api-Key,X-Share-Password,X-Part-Checksum,Idempotency-Key,If-Match,Range,X-Teldrive-Client'); res.writeHead(204); res.end(); return; }
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && req.headers['sec-fetch-site'] === 'cross-site' && !config.cors.includes(origin) && !(mobileOrigin && req.headers['x-teldrive-client'] === 'mobile')) fail(403, 'cross_site_request');
       if (url.pathname === '/healthz') { send(res, result({ status: 'ok', mode: config.mode })); return; }
       if (proxy) { proxy.request(req, res); return; }
-      const ip = req.socket.remoteAddress, bucket = Math.floor(Date.now() / 60000), login = (url.pathname.includes('/auth/') && !url.pathname.endsWith('/qr/poll') && !url.pathname.endsWith('/refresh')) || url.pathname.startsWith('/api/dev/');
+      const ip = req.socket.remoteAddress, bucket = Math.floor(Date.now() / 60000), login = (url.pathname.includes('/auth/') && !url.pathname.endsWith('/qr/poll') && !url.pathname.endsWith('/refresh')) || /^\/api\/v1\/mobile\/google\/(start|authorize|callback)$/.test(url.pathname) || url.pathname.startsWith('/api/dev/');
       const key = `${ip}:${login ? 'login' : 'all'}`, counter = limits.get(key) || { bucket, count: 0 };
       if (counter.bucket !== bucket) { counter.bucket = bucket; counter.count = 0; } counter.count++; limits.set(key, counter);
       if (limits.size > 10000) for (const [k, v] of limits) if (v.bucket !== bucket) limits.delete(k);
@@ -324,6 +340,9 @@ export function createApp(config, overrides = {}) {
         const match = found.regex.exec(url.pathname), params = {};
         for (let i = 0; i < found.params.length; i++) { try { params[found.params[i]] = decodeURIComponent(match[i + 1]); } catch { fail(400, 'invalid_path_encoding'); } }
         const principal = found.open ? {} : context.auth.authenticate(req, url.searchParams, found.ticket);
+        if (mobileOrigin && !found.open && principal.session?.scope !== 'client') fail(403, 'client_session_required');
+        if (req.headers['x-teldrive-client'] === 'mobile' && principal.user) principal.user = { ...principal.user, role: 'user', clientOnly: true };
+        assertClientAccess(principal, req.method, url.pathname);
         const body = found.raw ? undefined : ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) ? await json(req, config.jsonMaxBytes) : {};
         const c = { ...context, ...principal, req, res, params, query: url.searchParams, body };
         const idempotency = req.headers['idempotency-key'];
@@ -371,7 +390,7 @@ export function createApp(config, overrides = {}) {
   });
   server.requestTimeout = 3600000; server.headersTimeout = 60000; server.keepAliveTimeout = 5000;
   if (proxy) server.on('upgrade', proxy.upgrade);
-  return { server, context, async close() { clearInterval(cleanupTimer); await context?.rclone?.close(); await context?.jobs.close(); await new Promise(resolve => server.close(resolve)); await context?.telegram.close?.(); context?.store.close(); } };
+  return { server, context, async close() { clearInterval(cleanupTimer); await context?.rclone?.close(); await context?.jobs.close(); await new Promise(resolve => server.close(resolve)); await context?.telegram.close?.(); context?.mobile?.close(); context?.store.close(); } };
 }
 export async function start() {
   const config = readConfig(), app = createApp(config);

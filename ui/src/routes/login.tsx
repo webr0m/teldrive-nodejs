@@ -8,7 +8,9 @@ import { toast } from "sonner";
 import PhoneIcon from "~icons/gravity-ui/person";
 import QrIcon from "~icons/gravity-ui/qr-code";
 import ShieldIcon from "~icons/gravity-ui/shield-check";
-import { $api } from "@/api/client";
+import { $api, apiFetch } from "@/api/client";
+import { clientOnly, nativeClient } from "@/lib/client-runtime";
+import { googleClientLogin } from "@/lib/google-client";
 import { userMessage } from "@/api/errors";
 import { newIdempotencyKey } from "@/features/shared/idempotency";
 import { getQueryClient } from "@/lib/queryClient";
@@ -28,7 +30,7 @@ type CookieSession = { authenticated: true; expiresAt: string };
 export const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>) => ({
     redirect:
-      typeof search.redirect === "string" && search.redirect.startsWith("/")
+      typeof search.redirect === "string" && search.redirect.startsWith("/") && !search.redirect.startsWith("//") && !/[\\\x00-\x1f]/.test(search.redirect)
         ? search.redirect
         : "/files",
   }),
@@ -50,13 +52,21 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [qrUrl, setQrUrl] = useState("");
   const [qrExpiry, setQrExpiry] = useState("");
+  const [googleEnabled, setGoogleEnabled] = useState(false), [googleBusy, setGoogleBusy] = useState(false);
+  const googleController = useRef<AbortController | undefined>(undefined);
+  useEffect(() => {
+    if (!clientOnly) return;
+    const controller = new AbortController();
+    void apiFetch("/v1/mobile/config", { signal: controller.signal }).then(response => response.json()).then(value => setGoogleEnabled(value.googleEnabled)).catch(() => {});
+    return () => { controller.abort(); googleController.current?.abort(); };
+  }, []);
 
   const startPhone = $api.useMutation("post", "/v1/auth/telegram/start");
   const verifyCode = $api.useMutation("post", "/v1/auth/cookie/telegram/verify-code");
   const verifyPassword = $api.useMutation("post", "/v1/auth/cookie/telegram/verify-password");
   const startQr = $api.useMutation("post", "/v1/auth/telegram/qr/start");
   const pollQr = $api.useMutation("post", "/v1/auth/cookie/telegram/qr/poll");
-  const pending = startPhone.isPending || verifyCode.isPending || verifyPassword.isPending;
+  const pending = startPhone.isPending || verifyCode.isPending || verifyPassword.isPending || googleBusy;
   const submitting = useRef(false);
   const canSubmit =
     !pending && Boolean(step === "phone" ? phone.trim() : step === "code" ? code.trim() : password);
@@ -178,12 +188,23 @@ function LoginPage() {
         </div>
         <Card className="w-full max-w-md border border-border bg-surface/90 shadow-xl">
           <Card.Header className="block px-6 pt-6">
-            <Card.Title>{t("Iniciar sesión con Telegram")}</Card.Title>
+            <Card.Title>{clientOnly ? "Entrar a Teldrive Cliente" : t("Iniciar sesión con Telegram")}</Card.Title>
             <Card.Description>
-              {t("Las claves de API se utilizan con rclone y otros clientes externos.")}
+              {clientOnly ? "La primera vez utiliza Telegram. Después puedes vincular Google desde tu cuenta." : t("Las claves de API se utilizan con rclone y otros clientes externos.")}
             </Card.Description>
           </Card.Header>
           <Card.Content className="space-y-5 px-6 pb-6">
+            {clientOnly && <a href="/manual" className="block text-sm text-accent">Consultar el manual de uso</a>}
+            {clientOnly && <div className="space-y-2">
+              <Button className="w-full" variant="secondary" isDisabled={pending || !nativeClient || !googleEnabled} onPress={() => {
+                googleController.current = new AbortController(); setGoogleBusy(true);
+                void googleClientLogin(false, googleController.current.signal).then(finish).catch(error => {
+                  if (error.name !== "AbortError") toast.error("No se pudo entrar con Google", { description: String(error.message || error) });
+                }).finally(() => setGoogleBusy(false));
+              }}>{googleBusy ? "Esperando a Google…" : "Continuar con Google"}</Button>
+              {googleBusy && <Button variant="tertiary" onPress={() => googleController.current?.abort()}>Cancelar acceso con Google</Button>}
+              {!googleEnabled && <p className="text-xs text-muted">Google estará disponible cuando el editor configure su aplicación OAuth. Puedes entrar con Telegram.</p>}
+            </div>}
             <Tabs
               selectedKey={method}
               onSelectionChange={(key) => {

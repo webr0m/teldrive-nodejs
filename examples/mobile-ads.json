@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "refreshSeconds": 600,
+  "own": {
+    "enabled": false,
+    "firstDelaySeconds": 60,
+    "intervalSeconds": 300,
+    "durationSeconds": 15,
+    "campaigns": [{
+      "id": "promocion-propia",
+      "title": "Mi promoción",
+      "imageUrl": "https://example.com/banner.png",
+      "targetUrl": "https://example.com/promocion"
+    }]
+  },
+  "admob": {
+    "enabled": false,
+    "androidBannerId": "",
+    "iosBannerId": ""
+  }
+}

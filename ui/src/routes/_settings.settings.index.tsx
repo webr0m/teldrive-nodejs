@@ -8,6 +8,8 @@ import { useCurrentUser } from "@/auth/use-current-user";
 import { SettingsPageHeader, SettingsRow, SettingsSection } from "@/components/settings-layout";
 import { getQueryClient } from "@/lib/queryClient";
 import LogoutIcon from "~icons/gravity-ui/arrow-right-from-square";
+import { clientOnly } from "@/lib/client-runtime";
+import { GoogleAccount } from "@/components/google-account";
 
 export const Route = createFileRoute("/_settings/settings/")({
   component: AccountSettings,
@@ -115,6 +117,7 @@ function AccountSettings() {
           <p className="text-right font-mono text-sm">{stats.data.openUploads.toLocaleString()}</p>
         </SettingsRow>
       </SettingsSection>
+      {clientOnly ? <GoogleAccount /> : null}
     </div>
   );
 }

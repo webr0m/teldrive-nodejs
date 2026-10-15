@@ -13,7 +13,9 @@ import UploadIcon from "~icons/gravity-ui/arrow-up-from-line";
 import CloseIcon from "~icons/gravity-ui/xmark";
 import ClockIcon from "~icons/gravity-ui/clock";
 import InfoIcon from "~icons/gravity-ui/circle-info";
+import ShieldIcon from "~icons/gravity-ui/shield-check";
 import { useCurrentUser } from "@/auth/use-current-user";
+import { clientOnly, clientSettingsPaths } from "@/lib/client-runtime";
 
 const SETTINGS_GROUPS = [
   {
@@ -48,6 +50,8 @@ const SETTINGS_GROUPS = [
       { label: t("Subidas"), path: "/settings/uploads", icon: UploadIcon },
       { label: t("Apariencia"), path: "/settings/appearance", icon: PaletteIcon },
       { label: "Rclone", path: "/settings/rclone", icon: StorageIcon },
+      { label: t("Ayuda y manual"), path: "/settings/help", icon: InfoIcon },
+      { label: t("Privacidad y publicidad"), path: "/settings/privacy", icon: ShieldIcon },
     ],
   },
   {
@@ -198,6 +202,6 @@ function settingsGroupsFor(capabilities: string[]): SettingsGroup[] {
   const allowed = new Set(capabilities);
   return SETTINGS_GROUPS.map((group) => ({
     label: group.label,
-    items: group.items.filter((item) => !("capability" in item) || allowed.has(item.capability)),
+    items: group.items.filter((item) => (!clientOnly || clientSettingsPaths.has(item.path)) && (!("capability" in item) || allowed.has(item.capability))),
   })).filter((group) => group.items.length > 0) as SettingsGroup[];
 }

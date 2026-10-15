@@ -1,3 +1,4 @@
+import { serverOrigin } from "@/lib/client-runtime";
 import { t } from "@/lib/localization";
 import { Button } from "@heroui/react";
 import { useEffect, useState } from "react";
@@ -42,7 +43,7 @@ export function CastDialog({
 }) {
   const initialBase = loopbackHost(window.location.hostname)
     ? ""
-    : `${window.location.origin}/api/v1`;
+    : `${serverOrigin}/api/v1`;
   const [base, setBase] = useState(initialBase);
   const [addresses, setAddresses] = useState<string[]>([]);
   const [compatible, setCompatible] = useState(grant?.conversionAvailable ?? false);
@@ -103,7 +104,7 @@ export function CastDialog({
     };
   }, [open, grant, initialBase]);
   const airplayAvailable = Boolean(video()?.webkitShowPlaybackTargetPicker);
-  const browserPage = new URL("/cast", window.location.origin);
+  const browserPage = new URL("/cast", serverOrigin);
   if (mediaUrl)
     browserPage.hash = new URLSearchParams({
       url: mediaUrl,

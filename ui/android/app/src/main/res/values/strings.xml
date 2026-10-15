@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Teldrive Cloud</string>
+    <string name="title_activity_main">Teldrive Cloud</string>
+    <string name="package_name">lat.webrom.teldrive.client</string>
+    <string name="custom_url_scheme">lat.webrom.teldrive.client</string>
+</resources>

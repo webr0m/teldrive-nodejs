@@ -9,6 +9,9 @@ import { applyLanguage, getLanguage, languages } from "@/lib/localization";
 import { getQueryClient } from "./lib/queryClient";
 import { routeTree } from "./routeTree.gen";
 import "./styles/globals.css";
+import { nativeClient, clientOnly } from "@/lib/client-runtime";
+import { restoreNativeSession } from "@/lib/native-session";
+import { cleanClientCache } from "@/lib/mobile";
 
 const queryClient = getQueryClient();
 
@@ -47,6 +50,16 @@ declare module "@tanstack/react-router" {
 }
 
 async function startApp() {
+  if (clientOnly) document.documentElement.dataset.client = "mobile";
+  if (nativeClient) {
+    await restoreNativeSession();
+    void cleanClientCache(true).catch(() => {});
+    const { App } = await import("@capacitor/app");
+    await App.addListener("backButton", ({ canGoBack }) => {
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); return; }
+      if (canGoBack) window.history.back(); else void App.minimizeApp();
+    });
+  }
   applyLanguage();
   const rootElement = document.getElementById("root")!;
 

@@ -65,3 +65,12 @@ rclone-workspace-bytes = 1073741824
 mount-enabled = true
 agent-origin = 'http://127.0.0.1:5573'
 # mount-root = '/srv/teldrive/mounts'
+
+[node.google]
+client-id = ''
+client-secret = ''
+
+[node.mobile]
+ads-config-url = ''
+privacy-url = ''
+support-url = ''

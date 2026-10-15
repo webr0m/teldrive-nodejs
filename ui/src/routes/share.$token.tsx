@@ -23,6 +23,7 @@ import type { FileContextAction } from "@/features/files/file-context-menu";
 import { copyText } from "@/features/files/download";
 import { nativeFileDownload } from "@/lib/mobile";
 import { newIdempotencyKey } from "@/features/shared/idempotency";
+import { apiUrl, serverOrigin } from "@/lib/client-runtime";
 
 export const Route = createFileRoute("/share/$token")({
   component: PublicSharePage,
@@ -134,7 +135,7 @@ function PublicSharePage() {
     const endpoint = isRootFile
       ? `/v1/public/shares/${encodeURIComponent(token)}/content/${fileName}`
       : `/v1/public/shares/${encodeURIComponent(token)}/files/${encodeURIComponent(file.id)}/content/${fileName}`;
-    return new URL(`/api${endpoint}`, window.location.origin).toString();
+    return apiUrl(`/api${endpoint}`);
   };
 
   const playback = async (file: FileEntry) => {
@@ -153,7 +154,7 @@ function PublicSharePage() {
     setError(undefined);
     try {
       const session = await playback(file);
-      const url = new URL(playbackUrl(session.ticket), window.location.origin);
+      const url = new URL(playbackUrl(session.ticket), serverOrigin);
       url.searchParams.set("download", "1");
       if (await nativeFileDownload(url.toString(), file.name)) return;
       const anchor = document.createElement("a");

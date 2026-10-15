@@ -10,7 +10,6 @@ jobs:
           node-version: '24'
       - run: npm install --global pnpm@11.25.0 --ignore-scripts
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --dir ui install --ignore-workspace --frozen-lockfile
       - run: npm run check
       - run: node scripts/install-media.mjs
       - run: node scripts/install-rclone.mjs

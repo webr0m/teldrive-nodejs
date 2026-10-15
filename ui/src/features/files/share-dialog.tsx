@@ -1,3 +1,4 @@
+import { serverOrigin } from "@/lib/client-runtime";
 import { t } from "@/lib/localization";
 import {
   Button,
@@ -143,7 +144,7 @@ export function ShareDialog({
           expiresAt: expirationDate(linkExpirationMode, linkDuration),
         },
       });
-      const publicUrl = new URL(result.publicUrl, window.location.origin).toString();
+      const publicUrl = new URL(result.publicUrl, serverOrigin).toString();
       await refreshLinks();
       await copyPublicLink(publicUrl);
     } catch (error) {
@@ -155,7 +156,7 @@ export function ShareDialog({
 
   const copyPublicLink = async (url: string) => {
     try {
-      await copyText(new URL(url, window.location.origin).toString());
+      await copyText(new URL(url, serverOrigin).toString());
       toast.success(t("Enlace copiado"));
     } catch (error) {
       toast.error(t("No se pudo copiar el enlace"), { description: userMessage(error) });
@@ -473,7 +474,7 @@ export function ShareDialog({
                   <Input
                     aria-label={t("Enlace público")}
                     readOnly
-                    value={new URL(link.publicUrl, window.location.origin).toString()}
+                    value={new URL(link.publicUrl, serverOrigin).toString()}
                     className="w-full"
                   />
                 </div>

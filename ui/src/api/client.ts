@@ -3,18 +3,20 @@ import createQueryClient from "openapi-react-query";
 import { normalizeApiError } from "./errors";
 import type { paths } from "./schema";
 import { createSessionTransport } from "./session-transport";
+import { serverOrigin, nativeClient } from "@/lib/client-runtime";
+import { clientFetch, nativeRefresh } from "@/lib/native-session";
 
-const API_BASE_URL = "/api";
+const API_BASE_URL = `${serverOrigin}/api`;
 const transport = createSessionTransport(
-  (input, init) => fetch(input, init),
-  window.location.origin,
+  clientFetch,
+  serverOrigin,
 );
-export const refreshCookieSession = transport.refresh;
+export const refreshCookieSession = nativeClient ? nativeRefresh : transport.refresh;
 
 async function fetchWithApiErrors(input: RequestInfo | URL, init?: RequestInit) {
   let response: Response;
   try {
-    response = await transport.request(input, init);
+    response = await (nativeClient ? clientFetch(input, init) : transport.request(input, init));
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     throw normalizeApiError(error);

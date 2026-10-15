@@ -6,7 +6,7 @@ import tailwindcss from "@tailwindcss/vite";
 import Icons from "unplugin-icons/vite";
 import { defineConfig } from "vite";
 import babel from "@rolldown/plugin-babel";
-import appPackage from '../package.json';
+import appPackage from '../package.json' with { type: 'json' };
 
 const pdfJsRoot = path.resolve(import.meta.dirname, "node_modules/pdfjs-dist");
 const pdfJsAssetDirectories = ["cmaps", "standard_fonts", "wasm", "iccs"] as const;
@@ -89,7 +89,7 @@ export default defineConfig(() => {
     },
     plugins: [
       pdfJsAssets(),
-      tanstackRouter(),
+      tanstackRouter({ autoCodeSplitting: true }),
       react(),
       babel({ presets: [reactCompilerPreset()] }),
       tailwindcss(),

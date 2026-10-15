@@ -14,6 +14,14 @@
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
+    "@aparajita/capacitor-secure-storage": "^8.0.1",
+    "@capacitor-community/admob": "^8.2.1",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/browser": "^8.0.5",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/file-transfer": "^2.0.6",
+    "@capacitor/filesystem": "^8.1.4",
+    "@capacitor/share": "^8.0.3",
     "@heroui/react": "^3.2.6",
     "@heroui/styles": "^3.2.6",
     "@tailwindcss/vite": "^4.3.3",
@@ -41,6 +49,10 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/ios": "^8.5.3",
     "@iconify-json/gravity-ui": "^1.2.14",
     "@iconify-json/heroicons": "^1.2.3",
     "@iconify-json/icon-park-outline": "^1.2.4",

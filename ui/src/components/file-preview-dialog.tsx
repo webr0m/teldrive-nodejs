@@ -6,6 +6,8 @@ import { fileContentUrl, startFileDownload } from "@/features/files/download";
 import { previewMedia, supportsCodePreview } from "@/features/files/preview-support";
 import { CompatibleMedia, type PlaybackSession } from "./viewers/compatible-media";
 import { readerKind } from "@/features/files/reader-support";
+import { nativeClient, apiUrl } from "@/lib/client-runtime";
+import { apiFetch } from "@/api/client";
 type ViewerKind = "image" | "video" | "audio" | "pdf" | "ebook" | "text";
 import DownloadIcon from "~icons/gravity-ui/arrow-down-to-line";
 import RotateIcon from "~icons/gravity-ui/arrow-rotate-left";
@@ -34,11 +36,32 @@ export function FilePreviewDialog({
   onDownload?: () => void;
 }) {
   const closeFrame = useRef<number>(undefined);
-  const contentUrl = url ?? (file ? fileContentUrl(file) : "");
+  const [nativePreview, setNativePreview] = useState<{ id: string; url: string; session: PlaybackSession }>();
+  const [nativeError, setNativeError] = useState("");
+  useEffect(() => {
+    if (!nativeClient || !file || url) return;
+    let active = true;
+    setNativeError("");
+    void apiFetch(`/v1/files/${encodeURIComponent(file.id)}/playback`, { method: "POST" })
+      .then(response => response.json()).then((session: PlaybackSession) => {
+        if (active) setNativePreview({ id: file.id, url: apiUrl(`/api/v1/playback?${new URLSearchParams({ ticket: session.ticket })}`), session });
+      }).catch(error => { if (active) setNativeError(String(error.message || error)); });
+    return () => { active = false; };
+  }, [file?.id, url]);
+  const matchingPreview = nativePreview?.id === file?.id ? nativePreview : undefined;
+  const contentUrl = url ?? (nativeClient ? matchingPreview?.url || "" : file ? fileContentUrl(file) : "");
   const kind = file ? viewerKind(file) : undefined;
   const isReader = kind === "pdf" || kind === "ebook";
 
   if (!file || !kind) return null;
+  if (nativeClient && !url && !matchingPreview) return (
+    <Modal.Backdrop isOpen onOpenChange={onOpenChange} isDismissable data-content-viewer>
+      <Modal.Container><Modal.Dialog><Modal.Heading>{file.name}</Modal.Heading><Modal.Body>
+        {nativeError ? <p role="alert">{nativeError}</p> : <Spinner aria-label={t("Preparando archivo")} />}
+        <Button onPress={() => onOpenChange(false)}>{t("Cerrar")}</Button>
+      </Modal.Body></Modal.Dialog></Modal.Container>
+    </Modal.Backdrop>
+  );
 
   const changeOpen = (open: boolean) => {
     if (open || !isReader) {
@@ -163,7 +186,7 @@ export function FilePreviewDialog({
                 file={file}
                 url={contentUrl}
                 kind={kind}
-                session={playbackSession}
+                session={playbackSession || matchingPreview?.session}
               />
             ) : null}
             {kind === "text" ? <TextViewer url={contentUrl} /> : null}

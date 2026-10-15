@@ -11,8 +11,8 @@ export function cookies(req) {
 export class Auth {
   constructor(store, config, telegram) { this.store = store; this.config = config; this.telegram = telegram; this.box = new CryptoBox(config.key); }
   user(userId) { const u = this.store.get('users', userId); if (!u || u.disabled) fail(401, 'invalid_session'); return u; }
-  profile(u) { return { userId: Number(u.id), displayName: u.displayName, username: u.username, premium: !!u.premium, role: u.role, capabilities: ['files', 'uploads', 'shares', 'files.manageGrants', ...(['owner', 'admin'].includes(u.role) ? ['system.manageUsers','system.manageJobs'] : [])], createdAt: u.createdAt }; }
-  finish(me, sessionString) {
+  profile(u) { return { userId: Number(u.id), displayName: u.displayName, username: u.username, premium: !!u.premium, role: u.role, clientOnly: !!u.clientOnly, capabilities: ['files', 'uploads', 'shares', 'files.manageGrants', ...(!u.clientOnly && ['owner', 'admin'].includes(u.role) ? ['system.manageUsers','system.manageJobs'] : [])], createdAt: u.createdAt }; }
+  finish(me, sessionString, options) {
     const userId = String(me.id);
     if (this.config.allowedUsers.length && !this.config.allowedUsers.includes(userId) && !this.config.allowedUsers.some(v => me.username && v.replace(/^@/, '').toLowerCase() === me.username.toLowerCase())) fail(403, 'user_not_allowed');
     let u = this.store.get('users', userId);
@@ -22,11 +22,11 @@ export class Auth {
     if (u.disabled) fail(403, 'user_disabled');
     if (sessionString) u.telegramSession = this.box.encode(sessionString, `telegram:${userId}`);
     this.store.put('users', u);
-    return this.session(userId);
+    return this.session(userId, options);
   }
-  session(userId) {
+  session(userId, { scope = 'full', provider = 'telegram', identity } = {}) {
     const accessToken = token(), refreshToken = token();
-    const s = { id: id(), userId, accessHash: hash(accessToken), refreshHash: hash(refreshToken), accessExpiresAt: expires(15 * 60_000), expiresAt: expires(30 * 86400_000), createdAt: now(), lastUsedAt: now() };
+    const s = { id: id(), userId, scope, provider, identity, accessHash: hash(accessToken), refreshHash: hash(refreshToken), accessExpiresAt: expires(15 * 60_000), expiresAt: expires(30 * 86400_000), createdAt: now(), lastUsedAt: now() };
     this.store.put('sessions', s);
     return { accessToken, refreshToken, tokenType: 'Bearer', expiresIn: 900, _session: s };
   }
@@ -44,7 +44,8 @@ export class Auth {
       const s = this.store.get('session-index', hash(credential));
       const session = s && this.store.get('sessions', s.sessionId);
       if (!session || session.revokedAt || expired(session.expiresAt) || expired(session.accessExpiresAt) || session.accessHash !== hash(credential)) fail(401, 'invalid_session');
-      return { user: this.user(session.userId), session, apiKey: false };
+      const user = this.user(session.userId);
+      return { user: session.scope === 'client' ? { ...user, role: 'user', clientOnly: true } : user, session, apiKey: false };
     }
     if (allowTicket && query.has('ticket')) {
       const ticket = this.store.get('tickets', hash(query.get('ticket')));

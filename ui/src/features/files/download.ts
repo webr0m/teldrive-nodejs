@@ -1,5 +1,9 @@
 import { t } from "@/lib/localization";
 import type { FileEntry } from "@/api/types";
+import { nativeClient, serverOrigin, apiUrl } from "@/lib/client-runtime";
+import { apiFetch } from "@/api/client";
+import { nativeFileDownload } from "@/lib/mobile";
+import { toast } from "sonner";
 
 export function fileContentUrl(file: Pick<FileEntry, "id" | "name">, download = false) {
   const path = `/api/v1/files/${encodeURIComponent(file.id)}/content/${encodeURIComponent(file.name)}`;
@@ -7,6 +11,13 @@ export function fileContentUrl(file: Pick<FileEntry, "id" | "name">, download = 
 }
 
 export function startFileDownload(file: Pick<FileEntry, "id" | "name">) {
+  if (nativeClient) {
+    void (async () => {
+      const grant = await (await apiFetch(`/v1/files/${encodeURIComponent(file.id)}/playback`, { method: "POST" })).json();
+      await nativeFileDownload(apiUrl(`/api/v1/playback?${new URLSearchParams({ ticket: grant.ticket, download: "1" })}`), file.name);
+    })().catch(error => toast.error(t("No se pudo descargar el archivo"), { description: String(error.message || error) }));
+    return;
+  }
   const anchor = document.createElement("a");
   anchor.href = fileContentUrl(file, true);
   anchor.download = file.name;
@@ -37,5 +48,5 @@ export async function copyText(value: string) {
 }
 
 export function absoluteFileDownloadUrl(file: Pick<FileEntry, "id" | "name">) {
-  return new URL(fileContentUrl(file, true), window.location.origin).toString();
+  return new URL(fileContentUrl(file, true), serverOrigin).toString();
 }

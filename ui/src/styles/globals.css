@@ -375,3 +375,13 @@ foliate-view::part(foot) {
     padding-bottom: calc(14rem + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* Client layouts reserve system bars without affecting the desktop web app. */
+html[data-client="mobile"] .client-shell {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+html[data-client="mobile"] [data-content-viewer] {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
