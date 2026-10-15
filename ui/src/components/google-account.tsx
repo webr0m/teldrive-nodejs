@@ -6,6 +6,7 @@ import { apiFetch } from "@/api/client";
 import { nativeClient } from "@/lib/client-runtime";
 import { googleClientLogin } from "@/lib/google-client";
 import { SettingsSection } from "./settings-layout";
+import { isDemoActive } from "@/lib/client-demo";
 export function GoogleAccount() {
   const [busy, setBusy] = useState(false);
   const controller = useRef<AbortController | undefined>(undefined);
@@ -52,7 +53,7 @@ export function GoogleAccount() {
         </p>
         {!account.data?.enabled && (
           <p className="text-sm text-muted">
-            El editor debe configurar OAuth de Google en el servidor para habilitar el acceso.
+            {isDemoActive() ? "La demo no vincula cuentas. Sal de la demo e inicia sesión con Telegram para vincular Google." : "El editor debe configurar OAuth de Google en el servidor para habilitar el acceso."}
           </p>
         )}
         <Button

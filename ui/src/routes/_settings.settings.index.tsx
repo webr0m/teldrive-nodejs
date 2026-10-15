@@ -11,6 +11,7 @@ import LogoutIcon from "~icons/gravity-ui/arrow-right-from-square";
 import { clientOnly } from "@/lib/client-runtime";
 import { GoogleAccount } from "@/components/google-account";
 import { ClientSettingsHome } from "@/components/client-navigation";
+import { isDemoActive, endClientDemo } from "@/lib/client-demo";
 
 export const Route = createFileRoute("/_settings/settings/")({
   component: () => (clientOnly ? <ClientSettingsHome /> : <AccountSettings />),
@@ -40,6 +41,7 @@ export function AccountSettings() {
   const logout = $api.useMutation("post", "/v1/auth/cookie/logout");
 
   const logOut = async () => {
+    if (isDemoActive()) { endClientDemo(); window.location.assign("/login"); return; }
     try {
       await logout.mutateAsync({});
       getQueryClient().clear();
@@ -66,7 +68,7 @@ export function AccountSettings() {
       />
       <SettingsSection
         title={t("Perfil")}
-        description={t("Esta identidad corresponde a tu cuenta de Telegram autenticada.")}
+        description={isDemoActive() ? "Perfil de ejemplo local. No hay una cuenta de Telegram autenticada." : t("Esta identidad corresponde a tu cuenta de Telegram autenticada.")}
       >
         <SettingsRow
           label={displayName}

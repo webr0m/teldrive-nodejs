@@ -19,6 +19,24 @@ const pending = new Map<
 >();
 const activeCacheFiles = new Set<string>();
 
+/** Saves a small local demo file without issuing a server download. */
+export async function nativeBlobSave(blob: Blob, filename: string) {
+  if (!nativeClient) return false;
+  if (blob.size > 8 * 1024 * 1024) throw new Error("El archivo de demostración supera 8 MB");
+  const [{ Filesystem, Directory }, { Share }] = await Promise.all([import("@capacitor/filesystem"), import("@capacitor/share")]);
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+  const path = `teldrive-${crypto.randomUUID()}-${filename.replace(/[\\/\x00-\x1f:*?"<>|]/g, "_").slice(0, 180)}`;
+  activeCacheFiles.add(path);
+  try {
+    const { uri } = await Filesystem.writeFile({ directory: Directory.Cache, path, data: btoa(binary) });
+    await Share.share({ title: filename, files: [uri] });
+  } catch (error) { await Filesystem.deleteFile({ directory: Directory.Cache, path }).catch(() => {}); throw error; }
+  finally { activeCacheFiles.delete(path); }
+  return true;
+}
+
 /** Returns false in a normal browser; native apps stream directly to device storage. */
 export async function nativeFileDownload(
   url: string,

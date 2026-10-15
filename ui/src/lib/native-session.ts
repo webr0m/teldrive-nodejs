@@ -1,4 +1,5 @@
 import { nativeClient, serverOrigin, apiUrl, clientOnly } from "./client-runtime";
+import { isDemoActive } from "./client-demo";
 type Pair = { accessToken: string; refreshToken: string; tokenType: string; expiresIn: number };
 let pair: Pair | undefined;
 let restored: Promise<void> | undefined;
@@ -43,6 +44,7 @@ export function clientHeaders(extra?: HeadersInit) {
   return headers;
 }
 export async function nativeRefresh() {
+  if (isDemoActive()) return true;
   if (!nativeClient) return false;
   refreshing ??= (async () => {
     await restoreNativeSession();
@@ -65,11 +67,12 @@ export async function nativeRefresh() {
   return refreshing;
 }
 export async function clientFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  await restoreNativeSession();
   const source = new Request(input instanceof Request ? input : apiUrl(String(input)), init);
   let url = new URL(source.url);
   if (url.origin !== serverOrigin)
     throw new Error("La petición de la cuenta debe usar el servidor configurado");
+  if (isDemoActive()) return (await import("./demo-transport")).demoRequest(source);
+  await restoreNativeSession();
   if (nativeClient && url.pathname.includes("/auth/cookie/"))
     url = new URL(url.toString().replace("/auth/cookie/", "/auth/"));
   const mapped =

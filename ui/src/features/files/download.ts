@@ -2,16 +2,23 @@ import { t } from "@/lib/localization";
 import type { FileEntry } from "@/api/types";
 import { nativeClient, serverOrigin, apiUrl } from "@/lib/client-runtime";
 import { apiFetch } from "@/api/client";
-import { nativeFileDownload } from "@/lib/mobile";
+import { nativeFileDownload, nativeBlobSave } from "@/lib/mobile";
 import { toast } from "sonner";
+import { isDemoActive, demoContentUrl } from "@/lib/client-demo";
 
 export function fileContentUrl(file: Pick<FileEntry, "id" | "name">, download = false) {
+  if (isDemoActive()) return demoContentUrl(file.id);
   const path = `/api/v1/files/${encodeURIComponent(file.id)}/content/${encodeURIComponent(file.name)}`;
   return download ? `${path}?download=1` : path;
 }
 
 export function startFileDownload(file: Pick<FileEntry, "id" | "name">) {
-  if (nativeClient) {
+  if (nativeClient && isDemoActive()) {
+    void fetch(demoContentUrl(file.id)).then(response => response.blob()).then(blob => nativeBlobSave(blob, file.name))
+      .catch(error => toast.error(t("No se pudo descargar el archivo"), { description: String(error.message || error) }));
+    return;
+  }
+  if (nativeClient && !isDemoActive()) {
     void (async () => {
       const grant = await (await apiFetch(`/v1/files/${encodeURIComponent(file.id)}/playback`, { method: "POST" })).json();
       await nativeFileDownload(apiUrl(`/api/v1/playback?${new URLSearchParams({ ticket: grant.ticket, download: "1" })}`), file.name);

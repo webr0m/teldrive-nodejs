@@ -7,6 +7,7 @@ import type { FileEntry } from "@/api/types";
 import { CastDialog } from "./cast-dialog";
 import { apiUrl } from "@/lib/client-runtime";
 import type { AirPlayVideo } from "@/lib/casting";
+import { isDemoActive, demoContentUrl } from "@/lib/client-demo";
 
 const VideoViewer = lazy(() => import("./video-viewer").then((m) => ({ default: m.VideoViewer })));
 export type PlaybackSession = { ticket: string; expiresAt: string; conversionAvailable: boolean };
@@ -18,6 +19,7 @@ export function playbackUrl(
   subtitle?: number,
   video?: number,
 ) {
+  if (isDemoActive()) return demoContentUrl(ticket);
   return apiUrl(`/api/v1/playback?${new URLSearchParams({ ticket, mode, start: String(start), ...(audio !== undefined ? { audio: String(audio) } : {}), ...(subtitle !== undefined ? { subtitle: String(subtitle) } : {}), ...(video !== undefined ? { video: String(video) } : {}) })}`);
 }
 type Track = {

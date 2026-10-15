@@ -3,6 +3,8 @@ import { create } from "zustand";
 import { apiFetch, refreshCookieSession } from "@/api/client";
 import { apiUrl } from "@/lib/client-runtime";
 import { clientHeaders, restoreNativeSession } from "@/lib/native-session";
+import { clientFetch } from "@/lib/native-session";
+import { isDemoActive } from "@/lib/client-demo";
 import { retryUploadPart } from "./retry";
 import { invalidResponse, normalizeApiError, userMessage } from "@/api/errors";
 import type { FileEntry, NameConflictPolicy, UploadPart, UploadSession } from "@/api/types";
@@ -346,6 +348,12 @@ async function uploadPart(
   signal: AbortSignal,
   onProgress: (uploadedBytes: number) => void,
 ) {
+  if (isDemoActive()) {
+    const response = await clientFetch(apiUrl(`/api/v1/uploads/${encodeURIComponent(uploadId)}/parts/${partNo}`), { method: "PUT", body, signal });
+    if (!response.ok) throw normalizeApiError(await response.json(), response);
+    onProgress(body.size);
+    return;
+  }
   await restoreNativeSession();
   return new Promise<void>((resolve, reject) => {
     const request = new XMLHttpRequest();

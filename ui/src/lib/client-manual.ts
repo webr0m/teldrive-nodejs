@@ -5,6 +5,7 @@ export const clientManual = [
     summary:
       "Telegram conserva la identidad de tu unidad. Google puede facilitar los siguientes accesos.",
     steps: [
+      "Para probar sin una cuenta, pulsa Explorar demostración en la pantalla de acceso. La demo usa archivos locales de ejemplo, admite hasta 8 MB de subidas temporales y no conecta con tu unidad. Al recargar se restablece. Los enlaces públicos, bots reales y Google requieren iniciar sesión.",
       "La primera vez entra con tu número de Telegram y el código que recibas. Si tienes verificación en dos pasos, introduce también su contraseña.",
       "Desde Configuración → Cuenta puedes vincular Google después de un acceso reciente con Telegram. En los próximos accesos podrás elegir Google.",
       "Una cuenta de Google sin vincular no crea ni toma otra unidad. El servidor debe tener Google configurado para habilitar el botón.",

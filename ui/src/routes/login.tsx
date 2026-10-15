@@ -15,6 +15,7 @@ import { userMessage } from "@/api/errors";
 import { newIdempotencyKey } from "@/features/shared/idempotency";
 import { getQueryClient } from "@/lib/queryClient";
 import { currentUserQueryOptions } from "@/auth/queries";
+import { beginClientDemo } from "@/lib/client-demo";
 
 type Step = "phone" | "code" | "password";
 type Flow = {
@@ -195,6 +196,14 @@ function LoginPage() {
           </Card.Header>
           <Card.Content className="space-y-5 px-6 pb-6">
             {clientOnly && <a href="/manual" className="block text-sm text-accent">Consultar el manual de uso</a>}
+            {clientOnly && <div className="space-y-2 rounded-xl border border-border p-3">
+              <Button className="w-full" variant="secondary" isDisabled={pending} onPress={() => {
+                beginClientDemo();
+                getQueryClient().clear();
+                window.location.assign("/files");
+              }}>Explorar demostración</Button>
+              <p className="text-xs text-muted">Archivos de ejemplo sin cuenta ni códigos. Todo se realiza en este dispositivo y se restablece al recargar.</p>
+            </div>}
             {clientOnly && <div className="space-y-2">
               <Button className="w-full" variant="secondary" isDisabled={pending || !nativeClient || !googleEnabled} onPress={() => {
                 googleController.current = new AbortController(); setGoogleBusy(true);

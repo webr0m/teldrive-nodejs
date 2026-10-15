@@ -4,6 +4,7 @@ import { Button } from "@heroui/react";
 import { Capacitor } from "@capacitor/core";
 import { apiFetch } from "@/api/client";
 import { clientOnly, nativeClient } from "@/lib/client-runtime";
+import { isDemoActive } from "@/lib/client-demo";
 import {
   eligibleCampaigns,
   fetchMobileAds,
@@ -38,7 +39,7 @@ async function prepareAdMob() {
   return consentReady;
 }
 export async function reviewAdvertisingPrivacy() {
-  if (!nativeClient) return;
+  if (!nativeClient || isDemoActive()) return;
   const { AdMob } = await import("@capacitor-community/admob");
   await serializeNative(async () => {
     await hideNativeBanner();

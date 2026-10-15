@@ -9,6 +9,7 @@ import SettingsIcon from "~icons/gravity-ui/gear";
 import SearchIcon from "~icons/gravity-ui/magnifier";
 import { clientSecondaryNavigation, clientSettings } from "@/lib/client-navigation";
 import { t } from "@/lib/localization";
+import { isDemoActive, endClientDemo } from "@/lib/client-demo";
 
 export function ClientNavigation({ children }: { children: React.ReactNode }) {
   const pathname = useLocation({ select: (location) => location.pathname });
@@ -94,6 +95,10 @@ export function ClientNavigation({ children }: { children: React.ReactNode }) {
           </Button>
         )}
       </header>
+      {isDemoActive() && <aside aria-label="Demostración local" className="flex shrink-0 items-center gap-2 border-b border-border bg-accent/10 px-3 py-1 text-xs">
+        <p className="min-w-0 flex-1">Demo local · Sin conexión con tu unidad. Subidas de prueba hasta 8 MB. Compartir y vincular cuentas requieren iniciar sesión.</p>
+        <Button size="sm" variant="ghost" onPress={() => { endClientDemo(); window.location.assign("/login"); }}>Salir de la demo</Button>
+      </aside>}
       {children}
       <nav
         aria-label={t("Navegación de la aplicación")}

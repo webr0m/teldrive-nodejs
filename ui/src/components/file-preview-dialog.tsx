@@ -8,6 +8,7 @@ import { CompatibleMedia, type PlaybackSession } from "./viewers/compatible-medi
 import { readerKind } from "@/features/files/reader-support";
 import { nativeClient, apiUrl } from "@/lib/client-runtime";
 import { apiFetch } from "@/api/client";
+import { isDemoActive } from "@/lib/client-demo";
 type ViewerKind = "image" | "video" | "audio" | "pdf" | "ebook" | "text";
 import DownloadIcon from "~icons/gravity-ui/arrow-down-to-line";
 import RotateIcon from "~icons/gravity-ui/arrow-rotate-left";
@@ -39,7 +40,7 @@ export function FilePreviewDialog({
   const [nativePreview, setNativePreview] = useState<{ id: string; url: string; session: PlaybackSession }>();
   const [nativeError, setNativeError] = useState("");
   useEffect(() => {
-    if (!nativeClient || !file || url) return;
+    if (!nativeClient || isDemoActive() || !file || url) return;
     let active = true;
     setNativeError("");
     void apiFetch(`/v1/files/${encodeURIComponent(file.id)}/playback`, { method: "POST" })
@@ -49,12 +50,12 @@ export function FilePreviewDialog({
     return () => { active = false; };
   }, [file?.id, url]);
   const matchingPreview = nativePreview?.id === file?.id ? nativePreview : undefined;
-  const contentUrl = url ?? (nativeClient ? matchingPreview?.url || "" : file ? fileContentUrl(file) : "");
+  const contentUrl = url ?? (nativeClient && !isDemoActive() ? matchingPreview?.url || "" : file ? fileContentUrl(file) : "");
   const kind = file ? viewerKind(file) : undefined;
   const isReader = kind === "pdf" || kind === "ebook";
 
   if (!file || !kind) return null;
-  if (nativeClient && !url && !matchingPreview) return (
+  if (nativeClient && !isDemoActive() && !url && !matchingPreview) return (
     <Modal.Backdrop isOpen onOpenChange={onOpenChange} isDismissable data-content-viewer>
       <Modal.Container><Modal.Dialog><Modal.Heading>{file.name}</Modal.Heading><Modal.Body>
         {nativeError ? <p role="alert">{nativeError}</p> : <Spinner aria-label={t("Preparando archivo")} />}
