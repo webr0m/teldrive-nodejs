@@ -53,6 +53,7 @@ for (const platform of ["android", "ios"] as const) {
     const browserDownloads: string[] = [];
     page.on("download", (download) => browserDownloads.push(download.suggestedFilename()));
     await page.goto("/settings/rclone");
+    await page.getByText("Configuración avanzada y clientes externos", { exact: true }).click();
     await page.getByLabel("Clave de API de rclone", { exact: true }).fill("private-test-key");
     await page.getByRole("button", { name: "Descargar rclone.conf", exact: true }).click();
     await expect
@@ -85,6 +86,7 @@ for (const platform of ["android", "ios"] as const) {
     const browserDownloads: string[] = [];
     page.on("download", (download) => browserDownloads.push(download.suggestedFilename()));
     await page.goto("/settings/rclone");
+    await page.getByText("Configuración avanzada y clientes externos", { exact: true }).click();
     await page.getByLabel("Clave de API de rclone", { exact: true }).fill("private-test-key");
     await page.getByRole("button", { name: "Descargar rclone.conf", exact: true }).click();
     await expect(page.getByText("Guardado cancelado", { exact: true })).toBeVisible();
