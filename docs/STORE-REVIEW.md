@@ -18,9 +18,12 @@ Para salir, usar **Salir de la demo** en la franja informativa. Para revisar el 
 
 ## Estado de publicación (15 de octubre de 2026)
 
-- La versión 0.5.1 (501) está publicada en prueba interna; 0.5.2 incorpora el acceso demo para revisión.
+- La versión 0.5.2 (502) está publicada en prueba interna e incorpora el acceso demo para revisión. Local y producción responden con Node 0.5.2-alpha.
 - Ficha predeterminada preparada con descripción, icono, gráfico y cuatro capturas; privacidad, categoría/contacto, anuncios, funciones financieras y salud guardados.
 - Público objetivo indicado por el editor: mayores de 18 años.
+- Seguridad de datos preparada como borrador, con 15 tipos y sus finalidades; Google acepta las URLs públicas de eliminación en GitHub Pages. El guardado final depende de completar Público objetivo, que a su vez requiere Detalles de acceso.
+- Las instrucciones demo están preparadas. La confirmación de acceso completo no se ha marcado: la demo no ejecuta la vinculación de cuentas, el aprovisionamiento real de bots ni enlaces públicos. No se debe afirmar que esos servicios se hayan probado sin una cuenta real.
+- El editor aceptó los términos IARC e indicó que se prohíben desnudos y violencia gráfica real en enlaces públicos. La página de soporte publica esa política, con avisos por correo y revisión manual.
 - Beta abierta bloqueada por Google hasta obtener acceso a producción. La cuenta necesita una prueba cerrada con 12 participantes durante 14 días continuos; los 11 participantes adicionales se aportarán más adelante.
 - AdMob: integración preparada, aplicación pendiente de revisión, anuncios reales desactivados. No se debe afirmar que hay monetización activa.
 - iOS: compilación de simulador; falta la cuenta de App Store Connect y firma/distribución para dispositivos.
