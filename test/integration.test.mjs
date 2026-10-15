@@ -29,11 +29,11 @@ test('authenticated file lifecycle, binary integrity, encryption, shares and adm
   const quarantined=await (await request('/v1/folders','POST',{name:'Auditoría',parentId:folder.id})).json();
   const revokedShare=await (await request(`/v1/files/${quarantined.id}/shares`,'POST',{})).json();
   assert.equal((await request('/v1/files/bulk/spam','POST',{fileIds:[quarantined.id]})).status,200);
-  assert.ok((await (await request('/v1/files?status=spam')).json()).items.some(f=>f.id===quarantined.id));
+  assert.ok((await (await request('/v1/files?status=spam&scope=drive')).json()).items.some(f=>f.id===quarantined.id));
   assert.equal((await request(`/v1/files/${quarantined.id}/restore`,'POST')).status,200);
   assert.equal((await request(`/v1/public/shares/${revokedShare.token}`,'GET',undefined,{},false)).status,404);
   assert.equal((await request(`/v1/files/${quarantined.id}`,'DELETE')).status,204);
-  assert.ok((await (await request('/v1/files?status=trashed')).json()).items.some(f=>f.id===quarantined.id));
+  assert.ok((await (await request('/v1/files?status=trashed&scope=drive')).json()).items.some(f=>f.id===quarantined.id));
   assert.equal((await request('/v1/folders', 'POST', { name: 'Otro' }, { 'Idempotency-Key': '11111111-1111-4111-8111-111111111111' })).status, 409);
   assert.equal((await request('/v1/folders', 'POST', { name: '../escape' })).status, 422);
   assert.equal((await request(`/v1/files/${folder.id}/move`, 'POST', { parentId: folder.id })).status, 409);

@@ -14,6 +14,7 @@ import "./jobs.tsp";
 import "./storage.tsp";
 import "./playback.tsp";
 import "./incoming-spam.tsp";
+import "./rclone.tsp";
 
 using TypeSpec.Http;
 using TypeSpec.OpenAPI;

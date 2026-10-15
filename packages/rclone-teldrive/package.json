@@ -1,0 +1,14 @@
+{
+  "name": "@webr0m/rclone-teldrive",
+  "version": "0.1.0",
+  "description": "Teldrive v2 / Node drive extension for rclone-sdk",
+  "type": "module",
+  "main": "./index.mjs",
+  "types": "./index.d.ts",
+  "exports": { ".": { "types": "./index.d.ts", "import": "./index.mjs" } },
+  "files": ["index.mjs", "index.d.ts", "README.md", "LICENSE"],
+  "engines": { "node": ">=22.13.0" },
+  "dependencies": { "rclone-sdk": "1.75.0" },
+  "repository": { "type": "git", "url": "https://github.com/webr0m/teldrive-nodejs.git", "directory": "packages/rclone-teldrive" },
+  "license": "MIT"
+}

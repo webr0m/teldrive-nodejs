@@ -54,3 +54,14 @@ media-max-width = 1280
 media-timeout-seconds = 7200
 media-probe-timeout-seconds = 60
 media-probe-bytes = 8388608
+rclone-max-jobs = 2
+rclone-max-cache-gib = 100
+rclone-max-cache-hours = 720
+rclone-request-seconds = 120
+rclone-workspace-bytes = 1073741824
+
+[node.rclone]
+# Omit executable to use the pinned client installed under var/tools.
+mount-enabled = true
+agent-origin = 'http://127.0.0.1:5573'
+# mount-root = '/srv/teldrive/mounts'

@@ -62,6 +62,10 @@ Para incrustar la interfaz habilita `ALLOW_IFRAME=true` y añade:
 
 La autenticación dentro de un iframe depende de las políticas de cookies del navegador. Si el navegador restringe las cookies de terceros, abre el dominio directamente.
 
+## Rclone y unidades persistentes
+
+**Configuración → Rclone** administra la conexión desde la web, con destinos separados para el servidor y tu PC, transferencias y montaje persistente con caché configurable. Requiere el cliente `tgdrive/rclone` compatible con `api_key`. El componente local permite montar al iniciar Windows. El montaje del servidor depende de WinFsp/FUSE; el hosting Namecheap actual permite transferencias y carece de FUSE. Consulta la [guía de integración y montaje](docs/RCLONE.md) y la [extensión reutilizable para rclone-sdk](packages/rclone-teldrive/README.md).
+
 ## Conservar el motor original
 
 `MODE=gateway` y `UPSTREAM_URL=https://tu-servidor-teldrive.example` publican la interfaz y API originales a través de Node, incluidos streaming y WebSockets. Este modo sigue necesitando el motor Go; no es un port nativo. El origen es fijo y no se puede elegir desde una petición del visitante.

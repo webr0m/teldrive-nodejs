@@ -1,4 +1,6 @@
 import http from 'node:http';
+import { createReadStream } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +15,7 @@ import { Uploads } from './uploads.mjs';
 import { Shares } from './shares.mjs';
 import { Access } from './access.mjs';
 import { Jobs } from './jobs.mjs';
+import { Rclone } from './rclone.mjs';
 import { Settings } from './settings.mjs';
 import { Playback } from './playback.mjs';
 import { Media } from './media.mjs';
@@ -42,7 +45,13 @@ const parentOwner = (c, parentId, ownerId = c.user.id) => {
 
 route('GET', '/api/health/live', () => result({ status: 'ok', version: `node-${packageInfo.version}` }), { public: true });
 route('GET', '/api/health/ready', c => { c.store.ready(); return result({ status: 'ok', version: `node-${packageInfo.version}` }); }, { public: true });
-route('GET', '/api/config', c => result({ mode: 'native', storage: c.config.backend, demo: c.config.demo, partSize: c.config.partSize, maxFileSize: c.config.maxFileSize, maxConcurrentTransfers: c.config.concurrency, uploadRetryAttempts: c.config.uploadRetryAttempts }), { public: true });
+route('GET', '/api/config', c => result({ mode: 'native', storage: c.config.backend, demo: c.config.demo, partSize: c.config.partSize, maxFileSize: c.config.maxFileSize, maxConcurrentTransfers: c.config.concurrency, uploadRetryAttempts: c.config.uploadRetryAttempts, rcloneAgentOrigin: c.config.rcloneAgentOrigin }), { public: true });
+route('POST', '/api/v1/rclone/actions', async c => {
+  admin(c.user); if(c.apiKey) fail(403, 'session_required');
+  return result(await c.rclone.request(c.user.id, c.body.method, c.body.params));
+});
+route('PUT', '/api/v1/rclone/staging/:filename', async c => { admin(c.user); if(c.apiKey)fail(403,'session_required'); return result(await c.rclone.stage(c.user.id,c.params.filename,c.req),201); }, { raw: true });
+route('GET','/api/v1/rclone/local-content',async c=>{admin(c.user);if(c.apiKey)fail(403,'session_required');const file=await c.rclone.localPath(c.user.id,c.query.get('path'));const info=await stat(file);if(!info.isFile())fail(422,'not_a_file');c.res.setHeader('Content-Type','application/octet-stream');c.res.setHeader('Content-Length',info.size);c.res.setHeader('Content-Disposition',`attachment; filename*=UTF-8''${encodeURIComponent(path.basename(file))}`);await pipeline(createReadStream(file),c.res);});
 route('POST', '/api/dev/login', c => { if (!c.config.demo) fail(404, 'not_found'); return result(c.auth.publish(c.auth.finish({ id: 1, firstName: 'Demo local' }), c.res, true)); }, { public: true });
 route('POST', '/api/v1/auth/telegram/start', async c => { if (c.config.backend !== 'telegram') fail(503, 'telegram_not_configured'); return result(await c.telegram.start(c.body.phoneNumber), 201); }, { public: true });
 route('POST', '/api/v1/auth/telegram/qr/start', async c => { if (c.config.backend !== 'telegram') fail(503, 'telegram_not_configured'); return result(await c.telegram.start(undefined, true), 201); }, { public: true });
@@ -281,6 +290,7 @@ export function createApp(config, overrides = {}) {
     context = { store, catalog, telegram, auth, storage, uploads, shares, settings, config, access, playback: new Playback(store, catalog, shares, config) };
     context.playback.access = access;
     context.jobs = new Jobs(store, uploads, config); context.jobs.start();
+    context.rclone = new Rclone(config, { allowed: user => { const account = store.get('users', user); return !!account && !account.disabled && ['owner','admin'].includes(account.role); } }); context.rclone.start();
     context.media = new Media(config, context.playback); context.playback.media = context.media;
   }
   const cleanupTimer = context ? setInterval(() => { void context.uploads.drainCleanup().catch(() => {}); }, 60000).unref() : undefined;
@@ -337,7 +347,7 @@ export function createApp(config, overrides = {}) {
       }
       const mime = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.wasm': 'application/wasm', '.woff2': 'font/woff2', '.woff': 'font/woff', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
       res.setHeader('Content-Type', mime[path.extname(filename)] || 'application/octet-stream');
-      res.setHeader('Content-Security-Policy', `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; img-src 'self' blob: data:; media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self'; base-uri 'none'; form-action 'self'; ${config.allowIframe ? '' : "frame-ancestors 'self';"}`);
+      res.setHeader('Content-Security-Policy', `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; img-src 'self' blob: data:; media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self' ${config.rcloneAgentOrigin}; base-uri 'none'; form-action 'self'; ${config.allowIframe ? '' : "frame-ancestors 'self';"}`);
       const asset = await assets.read(filename);
       res.setHeader('ETag', asset.etag);
       if (url.pathname.startsWith('/assets/') && /-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$/i.test(filename)) res.setHeader('Cache-Control','public, max-age=31536000, immutable');
@@ -353,7 +363,7 @@ export function createApp(config, overrides = {}) {
   });
   server.requestTimeout = 3600000; server.headersTimeout = 60000; server.keepAliveTimeout = 5000;
   if (proxy) server.on('upgrade', proxy.upgrade);
-  return { server, context, async close() { clearInterval(cleanupTimer); await context?.jobs.close(); await new Promise(resolve => server.close(resolve)); await context?.telegram.close?.(); context?.store.close(); } };
+  return { server, context, async close() { clearInterval(cleanupTimer); await context?.rclone?.close(); await context?.jobs.close(); await new Promise(resolve => server.close(resolve)); await context?.telegram.close?.(); context?.store.close(); } };
 }
 export async function start() {
   const config = readConfig(), app = createApp(config);

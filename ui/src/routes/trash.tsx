@@ -42,6 +42,7 @@ export function QuarantinePage({ spam = false }: { spam?: boolean }) {
   const query = useInfiniteFilePages(
     {
       path: "/",
+      scope: "drive",
       sort: "updatedAt",
       order: "desc",
       view: "list",

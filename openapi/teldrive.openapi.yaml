@@ -27,6 +27,7 @@ tags:
   - name: Jobs
   - name: Periodic Jobs
   - name: Storage
+  - name: Rclone
 paths:
   /v1/files/{fileId}/playback:
     post:
@@ -6351,6 +6352,144 @@ paths:
         - BearerAuth: []
         - CookieAuth: []
         - ExternalApiKeyAuth: []
+  /v1/rclone/actions:
+    post:
+      operationId: rcloneAction
+      parameters: []
+      responses:
+        "200":
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema: {}
+        "401":
+          description: Access is unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Access is forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The request conflicts with the current state of the server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Client error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+      tags:
+        - Rclone
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RcloneActionRequest"
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+  /v1/rclone/staging/{filename}:
+    put:
+      operationId: rcloneStage
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: The request has succeeded and a new resource has been created as a
+            result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path:
+                    type: string
+                required:
+                  - path
+        "401":
+          description: Access is unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Access is forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Client error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+      tags:
+        - Rclone
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+  /v1/rclone/local-content:
+    get:
+      operationId: rcloneLocalContent
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+          explode: false
+      responses:
+        "200":
+          description: The request has succeeded.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          description: Access is unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Access is forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+      tags:
+        - Rclone
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
 components:
   parameters:
     SharePasswordHeader:
@@ -8396,6 +8535,16 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/StorageActivity"
+    RcloneActionRequest:
+      type: object
+      required:
+        - method
+      properties:
+        method:
+          type: string
+        params:
+          type: object
+          additionalProperties: {}
   securitySchemes:
     BearerAuth:
       type: http

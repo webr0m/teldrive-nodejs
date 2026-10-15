@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { SettingsPageHeader, SettingsRow, SettingsSection } from "@/components/settings-layout";
 import { RcloneConfigEditor } from "@/components/rclone-config-editor";
 import { RcloneBrowser } from "@/components/rclone-browser";
+import { RcloneControls } from "@/components/rclone-controls";
 import { isDesktop, desktopRequest } from "@/lib/desktop";
 import { nativeTextSave } from "@/lib/mobile";
 
@@ -76,7 +77,7 @@ function RcloneSettings() {
       <SettingsSection
         title={t("Conexión de Teldrive v2")}
         description={t(
-          "La clave se mantiene únicamente en esta página hasta que la cierres. El archivo descargado contiene tu credencial.",
+          "La conexión se guarda cifrada cuando pulses Guardar conexión. El archivo rclone.conf descargado contiene tu credencial.",
         )}
       >
         <SettingsRow label={t("Servidor")}>
@@ -236,6 +237,16 @@ function RcloneSettings() {
         ) : null}
       </SettingsSection>
       {isDesktop() ? <RcloneBrowser connectionVersion={connectionVersion} /> : null}
+      <RcloneControls
+        options={{
+          apiHost: host.replace(/\/$/, ""),
+          apiKey: key.trim(),
+          chunkMiB: chunk,
+          concurrency,
+          encrypt,
+          hash,
+        }}
+      />
       <SettingsSection
         title={t("Montar una unidad")}
         description={t(
@@ -290,9 +301,17 @@ function RcloneSettings() {
           </Button>
           <p className="text-sm text-muted">
             {t(
-              "La edición 1.73.1 usa access_token. Para v2 utiliza el rclone de esta edición con api_key.",
+              "Utiliza tgdrive/rclone v1.75.4 o una edición compatible con api_key para Teldrive v2.",
             )}
           </p>
+          <a
+            href="https://github.com/tgdrive/rclone/releases/tag/v1.75.4"
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm text-accent underline"
+          >
+            {t("Descargar cliente compatible")}
+          </a>
         </div>
       </SettingsSection>
       <RcloneConfigEditor onSaved={() => setConnectionVersion((value) => value + 1)} />

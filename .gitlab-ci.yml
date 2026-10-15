@@ -8,6 +8,7 @@ test:
     - pnpm --dir ui install --ignore-workspace --frozen-lockfile
     - npm run check
     - node scripts/install-media.mjs
+    - node scripts/install-rclone.mjs
     - npm test
     - pnpm --dir ui run build
     - pnpm --dir ui run typecheck

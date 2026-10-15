@@ -2,6 +2,11 @@ import { number, fail, now } from './core.mjs';
 
 // Infrastructure-independent limits, persisted separately from credentials.
 export const limitDefinitions = {
+  rcloneMaxJobs: { label: 'Transferencias simultáneas de rclone por cuenta', min: 1, max: 64, env: 'RCLONE_MAX_JOBS' },
+  rcloneMaxCacheGiB: { label: 'Caché máxima de cada montaje rclone (GiB)', min: 1, max: 100000, env: 'RCLONE_MAX_CACHE_GIB' },
+  rcloneMaxCacheHours: { label: 'Retención máxima de caché rclone (horas)', min: 1, max: 87600, env: 'RCLONE_MAX_CACHE_HOURS' },
+  rcloneRequestSeconds: { label: 'Espera de consultas a rclone (segundos)', min: 5, max: 3600, env: 'RCLONE_REQUEST_SECONDS' },
+  rcloneWorkspaceBytes: { label: 'Espacio temporal de rclone por cuenta (bytes)', min: 1048576, max: Number.MAX_SAFE_INTEGER, env: 'RCLONE_WORKSPACE_BYTES' },
   jobPollSeconds: { label: 'Intervalo de consulta de tareas (segundos)', min: 1, max: 300, env: 'JOB_POLL_SECONDS' },
   jobLeaseSeconds: { label: 'Reserva de ejecución de tareas (segundos)', min: 30, max: 3600, env: 'JOB_LEASE_SECONDS' },
   jobBatchLimit: { label: 'Máximo de elementos por tarea de mantenimiento', min: 1, max: 10000, env: 'JOB_BATCH_LIMIT' },

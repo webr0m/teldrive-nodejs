@@ -1,4 +1,5 @@
-packages: []
+packages:
+  - 'packages/*'
 allowBuilds:
   '@derhuerst/ffprobe-static': false
   ffmpeg-static: false

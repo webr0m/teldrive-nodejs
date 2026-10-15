@@ -8,6 +8,8 @@ Referencia: [webr0m/teldrive, teldrive-v2-drive-es](https://github.com/webr0m/te
 | --- | --- |
 | Interfaz personalizada, temas, traducciones y visores | Compila; revisión visual contra tel.webrom.lat |
 | Límites persistentes dentro de la configuración original | Implementado y probado |
+| Rclone desde Node y el menú web | Extensión de rclone-sdk con tgdrive/rclone v1.75.4; transferencias cifradas, hashes y trabajos probados con el cliente real |
+| Montaje persistente en PC o servidor | Configuración independiente, caché e inicio automático; WinFsp probado con lectura y recuperación tras reinicio. Namecheap carece de FUSE; macOS pendiente de prueba física |
 | Acceso Telegram por teléfono, 2FA y QR | Implementado; QR validado en el servidor publicado |
 | Sesiones, renovación, claves API, roles y administración | Implementado; ciclo local probado |
 | Carpetas, búsqueda de texto, favoritos, mover/copiar y papelera | Implementado; probado con SQLite y esquemas PostgreSQL v1/v2 representativos |

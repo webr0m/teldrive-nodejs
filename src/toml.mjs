@@ -14,6 +14,8 @@ const mappings = {
   'node.allow-iframe': 'ALLOW_IFRAME', 'node.demo-auth': 'DEMO_AUTH',
   'node.limits.part-size': 'PART_SIZE', 'node.limits.max-file-size': 'MAX_FILE_SIZE',
   'node.limits.concurrent-transfers': 'MAX_CONCURRENT_TRANSFERS',
+  'node.rclone.executable': 'RCLONE_EXECUTABLE', 'node.rclone.mount-root': 'RCLONE_MOUNT_ROOT', 'node.rclone.mount-enabled': 'RCLONE_MOUNT_ENABLED', 'node.rclone.agent-origin': 'RCLONE_AGENT_ORIGIN',
+  'node.limits.rclone-max-jobs': 'RCLONE_MAX_JOBS', 'node.limits.rclone-max-cache-gib': 'RCLONE_MAX_CACHE_GIB', 'node.limits.rclone-max-cache-hours': 'RCLONE_MAX_CACHE_HOURS', 'node.limits.rclone-request-seconds': 'RCLONE_REQUEST_SECONDS', 'node.limits.rclone-workspace-bytes': 'RCLONE_WORKSPACE_BYTES',
   'node.limits.upload-ttl-hours': 'UPLOAD_TTL_HOURS',
   'node.limits.rate-limit-per-minute': 'RATE_LIMIT_PER_MINUTE',
   'node.limits.login-rate-per-minute': 'LOGIN_RATE_PER_MINUTE',

@@ -48,12 +48,23 @@ export function config(env = process.env) {
     partSize: integer('PART_SIZE', 16 * 1024 * 1024, 1024 * 1024, 512 * 1024 * 1024),
     maxFileSize: integer('MAX_FILE_SIZE', 100 * 1024 ** 3, 0, Number.MAX_SAFE_INTEGER),
     concurrency: integer('MAX_CONCURRENT_TRANSFERS', 2, 1, 64),
+    rcloneExecutable: env.RCLONE_EXECUTABLE, rcloneMountRoot: env.RCLONE_MOUNT_ROOT,
+    rcloneMountEnabled: env.RCLONE_MOUNT_ENABLED !== 'false',
+    rcloneAgentOrigin: env.RCLONE_AGENT_ORIGIN || 'http://127.0.0.1:5573',
+    rcloneMaxJobs: integer('RCLONE_MAX_JOBS', 2, 1, 64),
+    rcloneMaxCacheGiB: integer('RCLONE_MAX_CACHE_GIB', 100, 1, 100000),
+    rcloneMaxCacheHours: integer('RCLONE_MAX_CACHE_HOURS', 720, 1, 87600),
+    rcloneRequestSeconds: integer('RCLONE_REQUEST_SECONDS', 120, 5, 3600),
+    rcloneWorkspaceBytes: integer('RCLONE_WORKSPACE_BYTES', 1073741824, 1048576, Number.MAX_SAFE_INTEGER),
     uploadTtlHours: integer('UPLOAD_TTL_HOURS', 168, 1, 8760),
     rateLimitPerMinute: integer('RATE_LIMIT_PER_MINUTE', 300, 10, 100000),
     loginRatePerMinute: integer('LOGIN_RATE_PER_MINUTE', 10, 1, 1000),
     jsonMaxBytes: integer('JSON_MAX_BYTES', 1048576, 4096, 16777216),
   };
   if (!['native', 'gateway'].includes(c.mode)) throw new Error('MODE must be native or gateway');
+  const agent = new URL(c.rcloneAgentOrigin);
+  if (!['127.0.0.1','localhost','[::1]'].includes(agent.hostname) || !['http:','https:'].includes(agent.protocol) || agent.username || agent.password || agent.pathname !== '/' || agent.search || agent.hash) throw new Error('RCLONE_AGENT_ORIGIN must be a loopback HTTP(S) origin');
+  c.rcloneAgentOrigin = agent.origin;
   if (c.mode === 'gateway') {
     const url = new URL(c.upstream || '');
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.pathname !== '/') throw new Error('UPSTREAM_URL must be an HTTP(S) origin');

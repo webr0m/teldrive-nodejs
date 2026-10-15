@@ -13,6 +13,7 @@ jobs:
       - run: pnpm --dir ui install --ignore-workspace --frozen-lockfile
       - run: npm run check
       - run: node scripts/install-media.mjs
+      - run: node scripts/install-rclone.mjs
       - run: npm test
       - run: pnpm --dir ui run build
       - run: pnpm --dir ui run typecheck

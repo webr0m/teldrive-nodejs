@@ -114,7 +114,7 @@ export class Catalog {
     const search = (q.get('search') || '').toLowerCase();
     const categories = q.getAll('category').flatMap(v => v.split(','));
     const all = tree.files;
-    let files = all.filter(f => f.status === status && (status !== 'active' || tree.active(f)) && (scope === 'drive' || (scope === 'recursive' ? (!parentId || descendants.has(f.parentId)) : status !== 'active' && !parentId || f.parentId === parentId)));
+    let files = all.filter(f => f.status === status && (status !== 'active' || tree.active(f)) && (scope === 'drive' || (scope === 'recursive' ? (!parentId || descendants.has(f.parentId)) : f.parentId === parentId)));
     files = files.filter(f => (!search || f.name.toLowerCase().includes(search)) && (!q.has('kind') || f.kind === q.get('kind')) && (!q.has('bookmarked') || q.get('bookmarked') !== 'true' || f.bookmark) && (!categories.length || categories.includes(category(f))));
     if (q.has('updatedAfter')) { const after = date(q.get('updatedAfter')); files = files.filter(f => f.updatedAt > after); }
     if (q.has('updatedBefore')) { const before = date(q.get('updatedBefore')); files = files.filter(f => f.updatedAt < before); }

@@ -38,7 +38,9 @@ test('folder paths and storage dashboard read the catalog once, and nested trash
   assert.deepEqual(catalog.list('7',new URLSearchParams({path:'/A/B'})).map(f=>f.id),['video']);
   assert.deepEqual(reads,[['list','files']]);reads.length=0;
   assert.equal(catalog.dashboard('7').summary.logicalBytes,123);assert.equal(reads.filter(([op,b])=>op==='list'&&b==='files').length,1);
-  assert.deepEqual(catalog.list('7',new URLSearchParams({status:'trashed'})).map(f=>f.id),['deleted']);
+  assert.deepEqual(catalog.list('7',new URLSearchParams({status:'trashed',scope:'drive'})).map(f=>f.id),['deleted']);
+  assert.deepEqual(catalog.list('7',new URLSearchParams({status:'trashed'})),[],'root folder excludes nested trash for rclone traversal');
+  assert.deepEqual(catalog.list('7',new URLSearchParams({status:'trashed',parentId:'B'})).map(f=>f.id),['deleted']);
   assert.equal(catalog.list('7',new URLSearchParams({scope:'drive',search:'video'}))[0].parentPath,'/A/B');
 });
 

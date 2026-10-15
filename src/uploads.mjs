@@ -3,12 +3,14 @@ import { mkdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
+import { MIMEType } from 'node:util';
 import { blake3 } from '@noble/hashes/blake3.js';
+import { TreeHash, hashBlocks, BLOCK_SIZE, TREE_HASH_SCHEME } from './tree-hash.mjs';
 import { id, now, expires, expired, fail, name, date, number, Locks, Semaphore } from './core.mjs';
 
 export class Uploads {
   constructor(store, catalog, storage, config) { this.store = store; this.catalog = catalog; this.storage = storage; this.config = config; this.locks = new Locks(); this.transfers = new Semaphore(config.concurrency); }
-  public(u) { const { ownerId, parts, ...rest } = u; return rest; }
+  public(u) { const { ownerId, parts, hashScheme, ...rest } = u; return rest; }
   get(userId, uploadId, open = false) {
     const u = this.store.get('uploads', uploadId);
     if (!u || (u.ownerId !== String(userId) && u.createdBy !== String(userId))) fail(404, 'upload_not_found');
@@ -23,8 +25,11 @@ export class Uploads {
     if (body.hash && (body.hash.algorithm !== 'blake3' || !/^[a-f0-9]{64}$/i.test(body.hash.value || ''))) fail(422, 'invalid_hash');
     const partSize = body.preferredPartSize === undefined ? this.config.partSize : Math.min(number(body.preferredPartSize, 1024 * 1024, 2147483648), this.config.partSize);
     if (!['fail', 'error', 'replace', 'rename'].includes(body.conflictPolicy || 'fail')) fail(422, 'invalid_conflict_policy');
-    if (body.mimeType && (typeof body.mimeType !== 'string' || !/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(body.mimeType))) fail(422, 'invalid_mime_type');
-    const u = { id: id(), ownerId: String(userId), parentId, name: filename, expectedSize: size, maxFileSize: this.config.maxFileSize, expectedHash: body.hash, mimeType: body.mimeType || 'application/octet-stream', modTime: date(body.modTime), encryption: !!body.encryption, conflictPolicy: body.conflictPolicy || 'fail', partSize, state: 'open', expiresAt: expires(this.config.uploadTtlHours * 3600000), createdAt: now(), parts: [] };
+    if (body.mimeType !== undefined) {
+      if (typeof body.mimeType !== 'string' || body.mimeType.length > 512 || /[\x00-\x1f\x7f]/.test(body.mimeType)) fail(422, 'invalid_mime_type');
+      try { new MIMEType(body.mimeType); } catch { fail(422, 'invalid_mime_type'); }
+    }
+    const u = { id: id(), ownerId: String(userId), parentId, name: filename, expectedSize: size, maxFileSize: this.config.maxFileSize, expectedHash: body.hash, hashScheme: TREE_HASH_SCHEME, mimeType: body.mimeType || 'application/octet-stream', modTime: date(body.modTime), encryption: !!body.encryption, conflictPolicy: body.conflictPolicy || 'fail', partSize, state: 'open', expiresAt: expires(this.config.uploadTtlHours * 3600000), createdAt: now(), parts: [] };
     this.store.put('uploads', u); return u;
   }
   async putPart(userId, uploadId, partNo, req) {
@@ -34,12 +39,13 @@ export class Uploads {
       if (!Number.isSafeInteger(expectedLength) || expectedLength < 1 || expectedLength > u.partSize) fail(413, 'invalid_part_length');
       if (u.expectedSize >= 0 && ((partNo - 1) * u.partSize + expectedLength > u.expectedSize || ((partNo * u.partSize) < u.expectedSize && expectedLength !== u.partSize))) fail(422, 'invalid_part_size');
       const tempDir = path.join(this.config.dataDir, 'tmp'); await mkdir(tempDir, { recursive: true, mode: 0o700 });
-      const temp = path.join(tempDir, id()), checksum = blake3.create(); let received = 0;
+      const temp = path.join(tempDir, id()), modern = u.hashScheme === TREE_HASH_SCHEME;
+      const checksum = modern ? new TreeHash() : blake3.create(); let received = 0;
       try {
         const meter = new Transform({ transform(chunk, encoding, cb) { received += chunk.length; if (received > expectedLength) cb(Object.assign(new Error('Body exceeds Content-Length'), { status: 413, code: 'part_too_large' })); else { checksum.update(chunk); cb(null, chunk); } } });
         await pipeline(req, meter, createWriteStream(temp, { mode: 0o600, flags: 'wx' }));
         if (received !== expectedLength) fail(422, 'truncated_part');
-        const digest = Buffer.from(checksum.digest()).toString('hex');
+        const digest = modern ? checksum.digest() : Buffer.from(checksum.digest()).toString('hex');
         if (req.headers['x-part-checksum'] && req.headers['x-part-checksum'].toLowerCase() !== digest) fail(422, 'checksum_mismatch');
         const existing = u.parts.find(p => p.partNo === partNo);
         if (existing) { if (existing.checksum !== digest || existing.plainSize !== received) fail(409, 'part_conflict'); return { status: 200, part: this.partPublic(u, existing) }; }
@@ -47,7 +53,7 @@ export class Uploads {
         const encryptionId = id();
         if (this.config.databaseLayout === 'legacy' && !u.channelId) { u.channelId = (await this.storage.telegram.selected(u.ownerId)).id; this.store.put('uploads', u); }
         const descriptor = await this.storage.put(u.ownerId, temp, received, u.encryption, encryptionId, u.channelId);
-        const part = { ...descriptor, partNo, plainSize: received, checksum: digest, createdAt: now(), updatedAt: now(), state: 'stored' };
+        const part = { ...descriptor, partNo, plainSize: received, checksum: digest, ...(modern ? { blockHashes: checksum.blocks } : {}), createdAt: now(), updatedAt: now(), state: 'stored' };
         u.parts.push(part); this.store.put('uploads', u);
         return { status: 201, part: this.partPublic(u, part) };
       } finally { await unlink(temp).catch(error => { if (error.code !== 'ENOENT') throw error; }); }
@@ -65,13 +71,28 @@ export class Uploads {
       }
       if ((u.expectedSize >= 0 && u.expectedSize !== size) || size > u.maxFileSize) fail(409, 'size_mismatch');
       let fileHash;
-      if (u.expectedHash) {
-        // A real whole-file BLAKE3 hash, not a hash of part digests.
+      if (u.hashScheme === TREE_HASH_SCHEME) {
+        // Aligned parts reuse the block digests collected while uploading. No
+        // Telegram download is needed to finish ordinary rclone uploads.
+        const aligned = u.parts.every((p, i) => (i === u.parts.length - 1 || p.plainSize % BLOCK_SIZE === 0) && p.blockHashes?.length === Math.ceil(p.plainSize / BLOCK_SIZE));
+        let value;
+        if (aligned) value = hashBlocks(u.parts.flatMap(p => p.blockHashes));
+        else {
+          // Administrators can choose smaller, unaligned parts. Preserve the
+          // same file hash across those boundaries without buffering the file.
+          const h = new TreeHash();
+          for (const p of u.parts) await this.storage.read(u.ownerId, p, 0, p.plainSize, bytes => { h.update(bytes); });
+          value = h.digest();
+        }
+        fileHash = { algorithm: 'blake3', value };
+      } else if (u.expectedHash) {
+        // Sessions created before the tree-hash upgrade keep their original
+        // checksum contract until completion or expiry.
         const h = blake3.create();
         for (const p of u.parts) await this.storage.read(u.ownerId, p, 0, p.plainSize, bytes => { h.update(bytes); });
         fileHash = { algorithm: 'blake3', value: Buffer.from(h.digest()).toString('hex') };
-        if (fileHash.value !== u.expectedHash.value.toLowerCase()) fail(422, 'file_hash_mismatch');
       }
+      if (u.expectedHash && fileHash.value !== u.expectedHash.value.toLowerCase()) fail(422, 'file_hash_mismatch');
       return this.store.transaction(() => {
         if (u.createdBy && String(userId) !== u.ownerId) this.access.authorize(userId, u.parentId, true);
         const file = this.catalog.create(u.ownerId, u, 'file', { size, mimeType: u.mimeType, encryption: u.encryption, encryptionKeyVersion: u.parts[0]?.encryptionKeyVersion ?? (u.encryption ? this.config.databaseLayout === 'legacy' ? 1 : this.config.encryptionKeyVersion : undefined), parts: u.parts, hash: fileHash });
