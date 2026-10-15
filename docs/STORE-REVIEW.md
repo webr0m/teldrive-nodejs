@@ -24,6 +24,8 @@ Para salir, usar **Salir de la demo** en la franja informativa. Para revisar el 
 - Seguridad de datos preparada como borrador, con 15 tipos y sus finalidades; Google acepta las URLs públicas de eliminación en GitHub Pages. El guardado final depende de completar Público objetivo, que a su vez requiere Detalles de acceso.
 - Las instrucciones demo están preparadas. La confirmación de acceso completo no se ha marcado: la demo no ejecuta la vinculación de cuentas, el aprovisionamiento real de bots ni enlaces públicos. No se debe afirmar que esos servicios se hayan probado sin una cuenta real.
 - El editor aceptó los términos IARC e indicó que se prohíben desnudos y violencia gráfica real en enlaces públicos. La página de soporte publica esa política, con avisos por correo y revisión manual.
+- Cuestionario IARC guardado: categoría de utilidad, interacción entre usuarios, contenido personal y sin catálogo editorial; las clasificaciones calculadas incluyen ESRB Todos y PEGI 3. Esto es independiente del público objetivo de mayores de 18 años indicado por el editor.
+- El editor preparará una cuenta de Telegram exclusiva para revisión. Sigue pendiente un acceso reutilizable a las funciones reales de esa cuenta; no utilizar la cuenta personal del editor ni sus códigos para este fin.
 - Beta abierta bloqueada por Google hasta obtener acceso a producción. La cuenta necesita una prueba cerrada con 12 participantes durante 14 días continuos; los 11 participantes adicionales se aportarán más adelante.
 - AdMob: integración preparada, aplicación pendiente de revisión, anuncios reales desactivados. No se debe afirmar que hay monetización activa.
 - iOS: compilación de simulador; falta la cuenta de App Store Connect y firma/distribución para dispositivos.
