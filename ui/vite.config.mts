@@ -6,6 +6,7 @@ import tailwindcss from "@tailwindcss/vite";
 import Icons from "unplugin-icons/vite";
 import { defineConfig } from "vite";
 import babel from "@rolldown/plugin-babel";
+import appPackage from '../package.json';
 
 const pdfJsRoot = path.resolve(import.meta.dirname, "node_modules/pdfjs-dist");
 const pdfJsAssetDirectories = ["cmaps", "standard_fonts", "wasm", "iccs"] as const;
@@ -81,8 +82,8 @@ export default defineConfig(() => {
   return {
     define: {
       __TELDRIVE_BUILD__: JSON.stringify({
-        version: process.env.TELDRIVE_UI_VERSION ?? "v2.0.0-drive-es.1",
-        commit: process.env.TELDRIVE_UI_COMMIT ?? "desarrollo",
+        version: process.env.TELDRIVE_UI_VERSION ?? `node-${appPackage.version}`,
+        commit: process.env.TELDRIVE_UI_COMMIT ?? process.env.GITHUB_SHA?.slice(0,8) ?? process.env.CI_COMMIT_SHORT_SHA ?? "desarrollo",
         date: process.env.TELDRIVE_UI_BUILD_DATE ?? new Date().toISOString(),
       }),
     },

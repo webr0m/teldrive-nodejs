@@ -19,6 +19,7 @@ import { playbackUrl, type PlaybackSession } from "@/components/viewers/compatib
 import { AppDialog } from "@/components/dialogs/app-dialog";
 import { Page, PageContent } from "@/components/page";
 import { FileBrowser, formatFileBytes, type FileBrowserView } from "@/features/files/file-browser";
+import type { FileContextAction } from "@/features/files/file-context-menu";
 import { copyText } from "@/features/files/download";
 import { nativeFileDownload } from "@/lib/mobile";
 import { newIdempotencyKey } from "@/features/shared/idempotency";
@@ -413,6 +414,31 @@ function PublicSharePage() {
                   onNavigatePath={(nextPath) => setPath(nextPath)}
                   onViewChange={setView}
                   onOpen={openFile}
+                  contextActions={(selected) => {
+                    const actions: FileContextAction[] = [];
+                    if (selected.length === 1) {
+                      const file = selected[0];
+                      actions.push({ id: "open", label: t("Abrir"), run: () => openFile(file) });
+                      if (file.kind === "file")
+                        actions.push({
+                          id: "download",
+                          label: t("Descargar"),
+                          run: () => {
+                            void download(file);
+                          },
+                        });
+                      if (editable)
+                        actions.push({
+                          id: "rename",
+                          label: t("Renombrar"),
+                          run: () => {
+                            setRenameFile(file);
+                            setRenameName(file.name);
+                          },
+                        });
+                    }
+                    return actions;
+                  }}
                   selection={{
                     selectedKeys,
                     onSelectionChange: setSelectedKeys,

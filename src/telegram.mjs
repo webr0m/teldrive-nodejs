@@ -18,7 +18,10 @@ export function telegramError(error) {
   fail(503, 'telegram_unavailable', 'Telegram request failed; retry later');
 }
 export class Telegram {
-  constructor(store, config) { this.store = store; this.config = config; this.box = new CryptoBox(config.key); this.secureBlob = new SecureBlob(config.key); this.locks = new Locks(); this.rotation = new Map(); }
+  constructor(store, config) {
+    this.store = store; this.config = config; this.box = new CryptoBox(config.key); this.secureBlob = new SecureBlob(config.key);
+    this.locks = new Locks(); this.rotation = new Map(); this.botClients = new Map(); this.clients = new Set(); this.busyBots = new Set();
+  }
   make(session = '') {
     const client = new TelegramClient(new StringSession(session), this.config.apiId, this.config.apiHash, { connectionRetries: 3, requestRetries: 3, floodSleepThreshold: 0, useWSS: true });
     client.setLogLevel('none');
@@ -43,27 +46,65 @@ export class Telegram {
     if (operation === 'download') bots = bots.slice(0, this.config.downloadBots ?? 20);
     if (!bots.length) return [];
     const key = `${userId}:${operation}`, index = this.rotation.get(key) || 0; this.rotation.set(key, (index + 1) % bots.length);
-    return [...bots.slice(index), ...bots.slice(0, index)].slice(0, this.config.botAttempts ?? 2);
+    const rotated = [...bots.slice(index), ...bots.slice(0, index)];
+    // Reuse an idle authenticated connection before opening another Telegram/DC key.
+    const warm = bot => this.botClients.has(bot.id) && !this.busyBots.has(bot.id);
+    rotated.sort((a,b) => Number(warm(b)) - Number(warm(a)));
+    return rotated.slice(0, this.config.botAttempts ?? 2);
+  }
+  async dropBot(botId) {
+    const entry = this.botClients.get(botId); if (!entry) return;
+    clearTimeout(entry.timer); this.botClients.delete(botId); this.clients.delete(entry.client);
+    await entry.client.disconnect().catch(()=>{});
   }
   async withBot(bot, fn) {
     return this.locks.run(`bot:${bot.id}`, async () => {
+      if (this.closing) fail(503,'telegram_unavailable');
       // Each deployment authenticates a distinct key. Reusing Go's MTProto key
       // from another IP can invalidate it, even if its stored bytes are unchanged.
-      const state = this.store.get('bot-state', this.botStateId(bot));
-      let session = state?.dedicatedAuth && state.session ? this.box.decode(state.session, `bot-session:${bot.id}`) : '';
-      let client = this.make(session);
+      const credential = hash(bot.tokenCiphertext), capacity = this.config.botClientPoolSize ?? 2;
+      this.busyBots.add(bot.id);
+      let entry = this.botClients.get(bot.id), client, reusable = false;
       try {
-        await client.connect();
-        if (!await client.checkAuthorization()) {
-          const token = this.secureBlob.open(bot.tokenCiphertext, 'bot-token').toString();
-          await client.invoke(new Api.auth.ImportBotAuthorization({ apiId: this.config.apiId, apiHash: this.config.apiHash, botAuthToken: token }));
+        if (entry && (!capacity || entry.credential !== credential || entry.ownerId !== bot.ownerId || entry.client.connected === false)) { await this.dropBot(bot.id); entry = undefined; }
+        if (entry) { clearTimeout(entry.timer); client = entry.client; }
+        else {
+          const state = this.store.get('bot-state', this.botStateId(bot));
+          const session = state?.dedicatedAuth && state.session ? this.box.decode(state.session, `bot-session:${bot.id}`) : '';
+          client = this.make(session); this.clients.add(client);
+          await client.connect();
+          if (!await client.checkAuthorization()) {
+            const token = this.secureBlob.open(bot.tokenCiphertext, 'bot-token').toString();
+            await client.invoke(new Api.auth.ImportBotAuthorization({ apiId: this.config.apiId, apiHash: this.config.apiHash, botAuthToken: token }));
+          }
+          this.store.put('bot-state', { id: this.botStateId(bot), botId: bot.id, ownerId: bot.ownerId, dedicatedAuth: true, session: this.box.encode(client.session.save(), `bot-session:${bot.id}`), lastUsedAt: now() });
+          while (capacity && this.botClients.size >= capacity) {
+            const idle = [...this.botClients.keys()].find(key => !this.busyBots.has(key)); if (!idle) break;
+            await this.dropBot(idle);
+          }
+          if (capacity && this.botClients.size < capacity) {
+            entry = { client, credential, ownerId: bot.ownerId }; this.botClients.set(bot.id, entry);
+          }
         }
-        const current = { id: this.botStateId(bot), botId: bot.id, ownerId: bot.ownerId, dedicatedAuth: true, session: this.box.encode(client.session.save(), `bot-session:${bot.id}`), lastUsedAt: now() };
-        this.store.put('bot-state', current);
         const value = await fn(client);
-        return value;
-      } finally { await client.disconnect(); }
+        reusable = true; return value;
+      } catch (error) {
+        if (['AbortError','MediaAbortError'].includes(error.name) && client?.connected !== false) reusable = true;
+        throw error;
+      } finally {
+        this.busyBots.delete(bot.id);
+        if (reusable && entry && !this.closing && (this.config.botClientPoolSize ?? 2) > 0) {
+          entry.timer = setTimeout(()=>{ void this.dropBot(bot.id); },(this.config.botClientIdleSeconds ?? 30)*1000).unref();
+        } else if (entry) await this.dropBot(bot.id);
+        else if (client) { this.clients.delete(client); await client.disconnect().catch(()=>{}); }
+      }
     });
+  }
+  async close() {
+    this.closing = true;
+    for (const entry of this.botClients.values()) clearTimeout(entry.timer);
+    this.botClients.clear();
+    await Promise.allSettled([...this.clients].map(client=>client.disconnect())); this.clients.clear();
   }
   async withTransfer(userId, operation, fn, signal) {
     for (const bot of this.eligibleBots(userId, operation)) {

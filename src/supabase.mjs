@@ -7,19 +7,28 @@ const revision = Symbol('databaseRevision');
 // read-your-writes semantics without holding a PostgreSQL transaction across HTTP requests.
 export class SupabaseStore {
   constructor(config, overrides = {}) {
-    this.config = config; config.databaseLayout = 'v2';
-    this.control = new SharedArrayBuffer(8); this.output = new SharedArrayBuffer(32 * 1024 ** 2);
+    this.config = config; this.overrides = overrides; this.timeoutMs = overrides.timeoutMs ?? 30000; config.databaseLayout = 'v2';
     if (overrides.rpc) this.rpc = overrides.rpc;
     else {
-      this.worker = new Worker(new URL('./supabase-worker.mjs', import.meta.url), { execArgv: [], workerData: { url: config.supabaseUrl, key: config.supabaseKey } });
-      this.worker.unref();
+      this.startWorker();
     }
     try { this.ready(); } catch (error) { this.close(); throw error; }
   }
+  startWorker() {
+    // A late response from a timed-out worker must never overwrite the next call.
+    this.worker?.terminate(); this.failed = false;
+    this.control = new SharedArrayBuffer(8); this.output = new SharedArrayBuffer(32 * 1024 ** 2);
+    const worker = this.overrides.workerFactory ? this.overrides.workerFactory() : new Worker(new URL('./supabase-worker.mjs', import.meta.url), { execArgv: [], workerData: { url: this.config.supabaseUrl, key: this.config.supabaseKey } });
+    this.worker = worker; worker.unref();
+    worker.on('error',()=>{if(this.worker===worker)this.failed=true;});
+    worker.on('exit',()=>{if(this.worker===worker)this.failed=true;});
+  }
   rpc(request) {
+    if (this.closed) fail(503,'supabase_unavailable');
+    if (this.failed) this.startWorker();
     const flags = new Int32Array(this.control); Atomics.store(flags, 0, 0);
     this.worker.postMessage({ request, control: this.control, output: this.output });
-    if (Atomics.wait(flags, 0, 0, 30000) === 'timed-out') fail(503, 'supabase_timeout');
+    if (Atomics.wait(flags, 0, 0, this.timeoutMs) === 'timed-out') { this.startWorker(); fail(503, 'supabase_timeout'); }
     const result = JSON.parse(Buffer.from(this.output, 0, Atomics.load(flags, 1)).toString());
     if (result.error) fail(result.error.status, result.error.code);
     return result.value;
@@ -69,7 +78,7 @@ export class SupabaseStore {
     try { const value = fn(); if (value?.then) throw new Error('Store transactions must be synchronous'); if (this.pending.length) this.rpc({ action: 'commit', operations: this.pending }); return value; }
     finally { this.pending = undefined; this.readCache = undefined; }
   }
-  close() { this.worker?.terminate(); }
+  close() { this.closed = true; this.worker?.terminate(); }
 }
 function structuredCopy(value) {
   // Preserve the non-JSON revision marker used for optimistic concurrency.

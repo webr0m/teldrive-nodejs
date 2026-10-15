@@ -1,10 +1,10 @@
 import http from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
 import { config as readConfig } from './config.mjs';
-import { Store, HttpError, fail, now, id, hash, token, date, page, number, expires, expired } from './core.mjs';
+import { Store, fail, now, id, hash, token, date, page, number, expires, expired } from './core.mjs';
 import { Auth, cookies } from './auth.mjs';
 import { Catalog } from './catalog.mjs';
 import { Telegram } from './telegram.mjs';
@@ -17,6 +17,7 @@ import { Media } from './media.mjs';
 import { gateway } from './gateway.mjs';
 import { PostgresStore } from './postgres.mjs';
 import { SupabaseStore } from './supabase.mjs';
+import { AssetCache } from './assets.mjs';
 import packageInfo from '../package.json' with { type: 'json' };
 
 const publicDir = fileURLToPath(new URL('../public/', import.meta.url));
@@ -35,7 +36,7 @@ const publicShare = c => c.shares.resolve(c.params.shareToken, c.req.headers['x-
 
 route('GET', '/api/health/live', () => result({ status: 'ok', version: `node-${packageInfo.version}` }), { public: true });
 route('GET', '/api/health/ready', c => { c.store.ready(); return result({ status: 'ok', version: `node-${packageInfo.version}` }); }, { public: true });
-route('GET', '/api/config', c => result({ mode: 'native', storage: c.config.backend, demo: c.config.demo, partSize: c.config.partSize, maxFileSize: c.config.maxFileSize }), { public: true });
+route('GET', '/api/config', c => result({ mode: 'native', storage: c.config.backend, demo: c.config.demo, partSize: c.config.partSize, maxFileSize: c.config.maxFileSize, maxConcurrentTransfers: c.config.concurrency, uploadRetryAttempts: c.config.uploadRetryAttempts }), { public: true });
 route('POST', '/api/dev/login', c => { if (!c.config.demo) fail(404, 'not_found'); return result(c.auth.publish(c.auth.finish({ id: 1, firstName: 'Demo local' }), c.res, true)); }, { public: true });
 route('POST', '/api/v1/auth/telegram/start', async c => { if (c.config.backend !== 'telegram') fail(503, 'telegram_not_configured'); return result(await c.telegram.start(c.body.phoneNumber), 201); }, { public: true });
 route('POST', '/api/v1/auth/telegram/qr/start', async c => { if (c.config.backend !== 'telegram') fail(503, 'telegram_not_configured'); return result(await c.telegram.start(undefined, true), 201); }, { public: true });
@@ -83,7 +84,7 @@ route('GET', '/api/v1/files/statistics/categories', c => result(c.catalog.catego
 route('GET', '/api/v1/storage/stats', c => result(c.catalog.dashboard(c.user.id)));
 route('POST', '/api/v1/folders', c => metadata(c, c.catalog.create(c.user.id, c.body), 201));
 for (const method of ['POST', 'DELETE']) route(method, '/api/v1/files/bookmarks', c => { const fileIds = validateIds(c.body); c.store.transaction(() => { for (const fileId of fileIds) { const f = c.catalog.get(c.user.id, fileId, true); f.bookmark = method === 'POST'; c.store.put('files', f); } }); return empty(); });
-for (const action of ['move', 'trash']) route('POST', `/api/v1/files/bulk/${action}`, c => result({ items: c.store.transaction(() => validateIds(c.body).map(fileId => c.catalog.public(action === 'move' ? c.catalog.move(c.user.id, fileId, c.body) : c.catalog.trash(c.user.id, fileId)))) }));
+for (const action of ['move', 'trash','spam']) route('POST', `/api/v1/files/bulk/${action}`, c => result({ items: c.store.transaction(() => validateIds(c.body).map(fileId => c.catalog.public(action === 'move' ? c.catalog.move(c.user.id, fileId, c.body) : c.catalog[action](c.user.id, fileId)))) }));
 route('DELETE', '/api/v1/files/trash', async c => { for (const f of c.catalog.all(c.user.id).filter(f => f.status === 'trashed')) if (c.store.get('files', f.id)) await c.uploads.purge(c.user.id, f.id); return empty(); });
 route('GET', '/api/v1/files/:fileId', c => metadata(c, c.catalog.get(c.user.id, c.params.fileId)));
 route('PATCH', '/api/v1/files/:fileId', c => metadata(c, c.catalog.update(c.user.id, c.params.fileId, c.body, c.req.headers['if-match'])));
@@ -151,13 +152,13 @@ route('POST', '/api/v1/files/:fileId/shares', c => result(c.shares.create(c.user
 route('GET', '/api/v1/files/:fileId/shares', c => { c.catalog.get(c.user.id, c.params.fileId); return result(page(c.store.list('shares', c.user.id).filter(s => s.fileId === c.params.fileId && !s.revokedAt).map(s => c.shares.summary(s)), c.query)); });
 route('PATCH', '/api/v1/shares/:shareId', c => result(c.shares.update(c.user.id, c.params.shareId, c.body)));
 route('DELETE', '/api/v1/shares/:shareId', c => { const s = c.shares.get(c.user.id, c.params.shareId); s.revokedAt = now(); c.store.put('shares', s); return empty(); });
-route('GET', '/api/v1/shared', c => { const fileIds = new Set(c.store.list('shares', c.user.id).filter(s => !s.revokedAt && !expired(s.expiresAt)).map(s => s.fileId)); return result(c.catalog.all(c.user.id).filter(f => fileIds.has(f.id) && c.catalog.isActive(c.user.id, f)).map(f => c.catalog.public(f))); });
+route('GET', '/api/v1/shared', c => { const fileIds = new Set(c.store.list('shares', c.user.id).filter(s => !s.revokedAt && !expired(s.expiresAt)).map(s => s.fileId)), tree = c.catalog.tree(c.user.id); return result(tree.files.filter(f => fileIds.has(f.id) && tree.active(f)).map(f => c.catalog.public(f))); });
 route('POST', '/api/v1/public/shares/:shareToken/unlock', c => { c.shares.unlock(c.params.shareToken, c.body.password, c.res); return empty(); }, { public: true });
 route('GET', '/api/v1/public/shares/:shareToken', c => { const s = publicShare(c); return result({ id: s.id, file: c.catalog.public(c.shares.file(s)), passwordProtected: !!s.passwordHash, expiresAt: s.expiresAt, permission: 'read' }); }, { public: true });
 route('GET', '/api/v1/public/shares/:shareToken/files', c => {
   const s = publicShare(c), root = c.shares.file(s); if (root.kind !== 'folder') fail(422, 'not_a_folder');
-  const parentId = c.catalog.resolve(s.ownerId, c.query.get('path') || '/', s.fileId);
-  return result(page(c.catalog.all(s.ownerId).filter(f => f.parentId === parentId && c.catalog.isActive(s.ownerId, f) && f.name.toLowerCase().includes((c.query.get('search') || '').toLowerCase())).map(f => c.catalog.public(f)), c.query));
+  const tree = c.catalog.tree(s.ownerId), parentId = c.catalog.resolve(s.ownerId, c.query.get('path') || '/', s.fileId, tree);
+  return result(page(tree.files.filter(f => f.parentId === parentId && tree.active(f) && f.name.toLowerCase().includes((c.query.get('search') || '').toLowerCase())).sort((a,b)=>a.name.localeCompare(b.name)||a.id.localeCompare(b.id)).map(f => c.catalog.public(f)), c.query));
 }, { public: true });
 
 export function byteRange(header, size) {
@@ -239,7 +240,7 @@ function send(res, r) {
   else { res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(r.body)); }
 }
 export function createApp(config, overrides = {}) {
-  const limits = new Map(), proxy = config.mode === 'gateway' ? gateway(config) : null;
+  const limits = new Map(), assets = new AssetCache(config), proxy = config.mode === 'gateway' ? gateway(config) : null;
   let context;
   if (!proxy) {
     const store = overrides.store || (config.databaseTransport === 'supabase' ? new SupabaseStore(config) : config.databaseUrl ? new PostgresStore(config) : new Store(config.dataDir)), catalog = new Catalog(store), telegram = overrides.telegram || new Telegram(store, config);
@@ -302,7 +303,11 @@ export function createApp(config, overrides = {}) {
       const mime = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.wasm': 'application/wasm', '.woff2': 'font/woff2', '.woff': 'font/woff', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
       res.setHeader('Content-Type', mime[path.extname(filename)] || 'application/octet-stream');
       res.setHeader('Content-Security-Policy', `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; img-src 'self' blob: data:; media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self'; base-uri 'none'; form-action 'self'; ${config.allowIframe ? '' : "frame-ancestors 'self';"}`);
-      const bytes = await readFile(filename); res.setHeader('Content-Length', bytes.length); res.end(req.method === 'HEAD' ? undefined : bytes);
+      const asset = await assets.read(filename);
+      res.setHeader('ETag', asset.etag);
+      if (url.pathname.startsWith('/assets/') && /-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$/i.test(filename)) res.setHeader('Cache-Control','public, max-age=31536000, immutable');
+      if (req.headers['if-none-match'] === asset.etag) { res.statusCode = 304; res.end(); return; }
+      res.setHeader('Content-Length', asset.bytes.length); res.end(req.method === 'HEAD' ? undefined : asset.bytes);
     } catch (error) {
       if (res.headersSent) { res.destroy(); return; }
       res.removeHeader('Content-Length');
@@ -313,7 +318,7 @@ export function createApp(config, overrides = {}) {
   });
   server.requestTimeout = 3600000; server.headersTimeout = 60000; server.keepAliveTimeout = 5000;
   if (proxy) server.on('upgrade', proxy.upgrade);
-  return { server, context, async close() { clearInterval(cleanupTimer); await new Promise(resolve => server.close(resolve)); context?.store.close(); } };
+  return { server, context, async close() { clearInterval(cleanupTimer); await new Promise(resolve => server.close(resolve)); await context?.telegram.close?.(); context?.store.close(); } };
 }
 export async function start() {
   const config = readConfig(), app = createApp(config);

@@ -14,10 +14,8 @@ function Information() {
         description={t("Versión de esta interfaz, servidor conectado y recursos del proyecto.")}
       />
       <SettingsSection
-        title={t("Teldrive v2")}
-        description={t(
-          "Edición comunitaria en español con temas, controles táctiles e integración de rclone.",
-        )}
+        title="Teldrive Node.js"
+        description={t("Port en Node.js de la edición personalizada de Teldrive.")}
       >
         <SettingsRow label={t("Versión de la interfaz")}>
           <span className="break-all text-sm">{buildInfo.version}</span>
@@ -46,7 +44,7 @@ function Information() {
         <div className="flex flex-wrap gap-3 p-5">
           <a
             className="rounded-lg border border-border px-4 py-3 text-sm"
-            href="https://github.com/webr0m/teldrive"
+            href="https://github.com/webr0m/teldrive-nodejs"
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -54,7 +52,7 @@ function Information() {
           </a>
           <a
             className="rounded-lg border border-border px-4 py-3 text-sm"
-            href="https://gitlab.com/ridrogo/teldrive"
+            href="https://gitlab.com/ridrogo/teldrive-nodejs"
             target="_blank"
             rel="noopener noreferrer"
           >

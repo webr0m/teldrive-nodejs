@@ -1,6 +1,6 @@
 {
   "name": "teldrive-nodejs",
-  "version": "0.1.9-alpha",
+  "version": "0.2.0-alpha",
   "private": true,
   "description": "Native Node.js Telegram drive and optional compatibility gateway",
   "type": "commonjs",
@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node --env-file-if-exists=.env app.js",
-    "test": "node --test test/*.test.mjs",
+    "test": "node --experimental-strip-types --test test/*.test.mjs",
     "check": "node scripts/check.mjs",
     "demo": "node scripts/demo.mjs",
     "package": "node scripts/package.mjs",

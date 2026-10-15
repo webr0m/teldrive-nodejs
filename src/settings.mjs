@@ -2,9 +2,13 @@ import { number, fail, now } from './core.mjs';
 
 // Infrastructure-independent limits, persisted separately from credentials.
 export const limitDefinitions = {
+  staticCacheBytes: { label: 'Caché de archivos de la interfaz (bytes; 0 desactiva)', min: 0, max: 67108864, env: 'STATIC_CACHE_BYTES' },
   downloadBots: { label: 'Bots disponibles para descargas (0 usa la cuenta)', min: 0, max: 200, env: 'DOWNLOAD_BOTS' },
   botAttempts: { label: 'Intentos con bots antes de usar la cuenta', min: 1, max: 20, env: 'BOT_ATTEMPTS' },
   botRetrySeconds: { label: 'Espera tras un fallo de bot (segundos)', min: 1, max: 86400, env: 'BOT_RETRY_SECONDS' },
+  botClientPoolSize: { label: 'Conexiones de bots reutilizables (0 desactiva)', min: 0, max: 64, env: 'BOT_CLIENT_POOL_SIZE' },
+  botClientIdleSeconds: { label: 'Conservar conexiones de bots inactivas (segundos)', min: 1, max: 600, env: 'BOT_CLIENT_IDLE_SECONDS' },
+  uploadRetryAttempts: { label: 'Reintentos por fragmento de subida', min: 0, max: 10, env: 'UPLOAD_RETRY_ATTEMPTS' },
   playbackTtlMinutes: { label: 'Duración del permiso de reproducción (minutos)', min: 5, max: 1440, env: 'PLAYBACK_TTL_MINUTES' },
   mediaConcurrency: { label: 'Procesos multimedia simultáneos', min: 1, max: 64, env: 'MEDIA_CONCURRENCY' },
   mediaThreads: { label: 'Hilos por conversión multimedia', min: 1, max: 64, env: 'MEDIA_THREADS' },

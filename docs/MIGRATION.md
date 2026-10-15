@@ -24,7 +24,8 @@ Referencia: [webr0m/teldrive, teldrive-v2-drive-es](https://github.com/webr0m/te
 | Dashboard de almacenamiento | Uso actual, categorías, canales y actividad de subidas Node; sin reconstruir historial anterior |
 | Bots v2, rotación y retorno a la cuenta ante errores | Lectura de los 26 bots existentes, cifrado XChaCha y una descarga real por bot validados; alta/baja implementadas, sin borrar ni crear bots reales durante las pruebas |
 | Trabajos River/importaciones y SSE | Pendiente de port nativo |
-| ACL entre usuarios, spam compartido y enlaces con edición | Pendiente |
+| Spam de archivos propios | Implementado: revoca enlaces Node del árbol y permite restaurar sin reactivarlos |
+| ACL entre usuarios, spam compartido y enlaces con edición | Pendiente; navegación oculta si el servidor no anuncia la capacidad |
 | Búsqueda regex y generación de vistas previas persistentes | Pendiente |
 | Sesiones web, enlaces, cargas, favoritos y estado de lectura ya emitidos por Go | No se importan; se conservan para uso con el motor original |
 
@@ -41,3 +42,5 @@ La pasarela MODE=gateway transmite las operaciones originales, streaming y WebSo
 Una migración completa es técnicamente posible con MTProto, PostgreSQL y trabajos durables en Node. Quedan los módulos indicados y pruebas de interoperabilidad reales. Esta versión debe evaluarse como un port inicial, conservando operativo el servicio original durante su validación.
 
 El módulo multimedia reconoce `media.enabled`, `media.ffmpeg-path`, `media.ffprobe-path` y `media.max-concurrent`. Las rutas deben corresponder al sistema operativo del servidor; si se omiten, usa los paquetes fijados. Ejecuta `node scripts/install-media.mjs` después de instalar dependencias. Se pueden ajustar los procesos, hilos, resolución y tiempos en administración. El sondeo y las conversiones solo leen URLs del propio servidor con un permiso ligado al archivo. Los permisos por usuario y enlaces de edición siguen pendientes; la UI no consulta esas operaciones cuando el servidor no anuncia la capacidad.
+
+La auditoría de 0.2.0 añade índices del árbol por operación, reutilización limitada de conexiones de bots, caché de recursos estáticos y recuperación del trabajador de Supabase tras un timeout. Consulta [AUDIT.md](AUDIT.md) para las correcciones, pruebas y límites que permanecen.

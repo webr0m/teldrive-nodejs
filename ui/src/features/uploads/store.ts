@@ -1,6 +1,7 @@
 import { t } from "@/lib/localization";
 import { create } from "zustand";
-import { apiFetch } from "@/api/client";
+import { apiFetch, refreshCookieSession } from "@/api/client";
+import { retryUploadPart } from "./retry";
 import { invalidResponse, normalizeApiError, userMessage } from "@/api/errors";
 import type { FileEntry, NameConflictPolicy, UploadPart, UploadSession } from "@/api/types";
 import { newClientId } from "@/features/shared/client-id";
@@ -61,6 +62,9 @@ const files = new Map<string, File>();
 const controllers = new Map<string, AbortController>();
 const folderResolutions = new Map<string, Promise<string>>();
 let active = 0;
+let serverLimits: { concurrency: number; retries: number } | undefined;
+let limitsUpdatedAt = 0;
+let loadingLimits: Promise<void> | undefined;
 
 const MIB = 1024 * 1024;
 export const DEFAULT_PART_SIZE_MIB = 512;
@@ -92,6 +96,9 @@ function readSettings(): UploadSettings {
       ...JSON.parse(localStorage.getItem(settingsKey) || "{}"),
     } as UploadSettings;
     settings.encryption = settings.encryption === true;
+    settings.concurrency = Number.isSafeInteger(settings.concurrency)
+      ? Math.max(1, Math.min(16, settings.concurrency))
+      : 3;
     settings.preferredPartSize = normalizePartSizeMiB(settings.preferredPartSize / MIB) * MIB;
     return settings;
   } catch {
@@ -183,7 +190,14 @@ export const useUploadStore = create<UploadState>((set, get) => ({
     if (patch.preferredPartSize !== undefined) {
       settings.preferredPartSize = normalizePartSizeMiB(patch.preferredPartSize / MIB) * MIB;
     }
-    localStorage.setItem(settingsKey, JSON.stringify(settings));
+    settings.concurrency = Number.isSafeInteger(settings.concurrency)
+      ? Math.max(1, Math.min(16, settings.concurrency))
+      : 3;
+    try {
+      localStorage.setItem(settingsKey, JSON.stringify(settings));
+    } catch {
+      /* Keep the in-memory setting when storage is unavailable. */
+    }
     set({ settings });
     queueMicrotask(schedule);
   },
@@ -253,22 +267,24 @@ async function getOrCreateSession(task: UploadTask, signal: AbortSignal): Promis
   return created;
 }
 
-function escapeRegex(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 async function findExistingFolder(name: string, parentId: string | undefined, signal: AbortSignal) {
   const query = new URLSearchParams({
     kind: "folder",
-    search: `^${escapeRegex(name)}$`,
-    searchType: "regex",
+    search: name,
     sort: "name",
     order: "asc",
-    limit: "2",
+    limit: "200",
   });
   if (parentId) query.set("parentId", parentId);
-  const result = await jsonRequest<{ items: FileEntry[] }>(`/v1/files?${query}`, { signal });
-  return result.items.find((item) => item.kind === "folder");
+  for (;;) {
+    const result = await jsonRequest<{ items: FileEntry[]; nextCursor?: string }>(
+      `/v1/files?${query}`,
+      { signal },
+    );
+    const match = result.items.find((item) => item.kind === "folder" && item.name === name);
+    if (match || !result.nextCursor) return match;
+    query.set("cursor", result.nextCursor);
+  }
 }
 
 async function createOrMergeFolder(
@@ -349,12 +365,14 @@ function uploadPart(
       } catch {
         responseBody = undefined;
       }
-      reject(
-        normalizeApiError(
-          responseBody,
-          new Response(request.responseText, { status: request.status || 500 }),
-        ),
+      const error = normalizeApiError(
+        responseBody,
+        new Response(request.responseText, { status: request.status || 500 }),
       );
+      const retryAfter = Number(request.getResponseHeader("Retry-After"));
+      if (Number.isFinite(retryAfter) && retryAfter > 0)
+        Object.assign(error, { retryAfterMilliseconds: retryAfter * 1000 });
+      reject(error);
     });
     request.addEventListener("error", () => {
       signal.removeEventListener("abort", abort);
@@ -402,6 +420,7 @@ async function runTask(taskId: string) {
   try {
     const session = await getOrCreateSession(task, controller.signal);
     if (session.state === "completed") {
+      files.delete(taskId);
       store.patchTask(taskId, {
         status: "completed",
         progress: 100,
@@ -428,13 +447,19 @@ async function runTask(taskId: string) {
       const end = Math.min(task.size, start + session.partSize);
       const blob = file.slice(start, end);
       const uploadedBeforePart = uploaded;
-      await uploadPart(session.id, partNo, blob, controller.signal, (partUploadedBytes) => {
-        const currentUploaded = uploadedBeforePart + partUploadedBytes;
-        store.patchTask(taskId, {
-          uploadedBytes: currentUploaded,
-          progress: task.size ? Math.round((currentUploaded / task.size) * 100) : 100,
-        });
-      });
+      await retryUploadPart(
+        () =>
+          uploadPart(session.id, partNo, blob, controller.signal, (partUploadedBytes) => {
+            const currentUploaded = uploadedBeforePart + partUploadedBytes;
+            store.patchTask(taskId, {
+              uploadedBytes: currentUploaded,
+              progress: task.size ? Math.round((currentUploaded / task.size) * 100) : 100,
+            });
+          }),
+        controller.signal,
+        refreshCookieSession,
+        serverLimits?.retries ?? 5,
+      );
       uploaded = uploadedBeforePart + blob.size;
       store.patchTask(taskId, {
         uploadedBytes: uploaded,
@@ -476,10 +501,40 @@ async function runTask(taskId: string) {
 }
 
 function schedule() {
-  while (active < useUploadStore.getState().settings.concurrency) {
+  if (!serverLimits || Date.now() - limitsUpdatedAt > 60000) {
+    if (loadingLimits) return;
+    loadingLimits = apiFetch("/config")
+      .then((response) => response.json())
+      .then((data) => {
+        serverLimits = {
+          concurrency:
+            Number.isSafeInteger(data.maxConcurrentTransfers) && data.maxConcurrentTransfers > 0
+              ? data.maxConcurrentTransfers
+              : 16,
+          retries:
+            Number.isSafeInteger(data.uploadRetryAttempts) && data.uploadRetryAttempts >= 0
+              ? Math.min(10, data.uploadRetryAttempts)
+              : 5,
+        };
+      })
+      .catch(() => {
+        serverLimits = { concurrency: 16, retries: 5 };
+      })
+      .finally(() => {
+        limitsUpdatedAt = Date.now();
+        loadingLimits = undefined;
+        queueMicrotask(schedule);
+      });
+    return;
+  }
+  while (
+    active < Math.min(useUploadStore.getState().settings.concurrency, serverLimits.concurrency)
+  ) {
     const next = useUploadStore
       .getState()
-      .tasks.find((task) => task.status === "queued" && files.has(task.id));
+      .tasks.find(
+        (task) => task.status === "queued" && files.has(task.id) && !controllers.has(task.id),
+      );
     if (!next) break;
     active++;
     void runTask(next.id);

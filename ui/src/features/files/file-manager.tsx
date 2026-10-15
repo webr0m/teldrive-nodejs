@@ -26,6 +26,7 @@ import { useFileClipboardStore } from "./clipboard-store";
 import { absoluteFileDownloadUrl, copyText, startFileDownload } from "./download";
 import { FileActionDialogs } from "./file-action-dialogs";
 import { FileBrowser } from "./file-browser";
+import type { FileContextAction } from "./file-context-menu";
 import { FileSelectionToolbar } from "./file-selection-toolbar";
 import { useFileActions } from "./mutations";
 import { useInfiniteFilePages } from "./queries";
@@ -784,6 +785,126 @@ export function FileManagerPage({
     );
   };
 
+  const contextActions = (pane: PaneId, selected: FileEntry[]): FileContextAction[] => {
+    const location = paneLocation(pane),
+      single = selected.length === 1 ? selected[0] : undefined;
+    const actions: FileContextAction[] = [];
+    if (!selected.length) {
+      if (!searchMode) {
+        actions.push({
+          id: "new-folder",
+          label: t("Nueva carpeta"),
+          run: () => {
+            setActivePane(pane);
+            setFolderDialogOpen(true);
+          },
+        });
+        if (hasClipboard)
+          actions.push({
+            id: "paste",
+            label: t("Pegar"),
+            run: () => {
+              void pasteClipboard(pane);
+            },
+          });
+      }
+      return actions;
+    }
+    if (single)
+      actions.push({
+        id: "open",
+        label: single.kind === "folder" ? t("Abrir carpeta") : t("Abrir"),
+        run: () => openFile(single, pane),
+      });
+    const stage = (mode: "copy" | "cut") => {
+      if (searchMode && mode === "copy")
+        setDestination({ mode: "copy", files: [...selected], pane });
+      else {
+        setClipboard(mode, selected, location.parentId, location.path, pane);
+        setPaneSelectedKeys(pane, new Set());
+      }
+    };
+    if (!searchMode) actions.push({ id: "cut", label: t("Cortar"), run: () => stage("cut") });
+    actions.push({ id: "copy", label: t("Copiar"), run: () => stage("copy") });
+    if (single) {
+      actions.push({
+        id: "rename",
+        label: t("Renombrar"),
+        run: () => {
+          setActivePane(pane);
+          setRenameFile(single);
+          setRenameName(single.name);
+          setActionError(undefined);
+        },
+      });
+      if (!searchMode)
+        actions.push({
+          id: "duplicate",
+          label: t("Duplicar"),
+          run: () => {
+            void duplicateFile(single, pane);
+          },
+        });
+      actions.push({
+        id: "share",
+        label: t("Compartir"),
+        run: () => {
+          setActivePane(pane);
+          setShareFile(single);
+        },
+      });
+      if (single.kind === "file")
+        actions.push({
+          id: "download",
+          label: t("Descargar"),
+          run: () => startFileDownload(single),
+        });
+    }
+    if (selected.every((file) => file.kind === "file"))
+      actions.push({
+        id: "download-links",
+        label: t("Copiar enlace de descarga"),
+        run: () => {
+          void copyText(selected.map(absoluteFileDownloadUrl).join("\n"))
+            .then(() => toast.success(t("Enlace copiado")))
+            .catch((error) => toast.error(userMessage(error)));
+        },
+      });
+    actions.push({
+      id: "move",
+      label: t("Mover a…"),
+      run: () => {
+        setActivePane(pane);
+        setActionError(undefined);
+        setDestination({ mode: "move", files: [...selected], pane });
+      },
+    });
+    actions.push({
+      id: "spam",
+      label: t("Marcar como spam"),
+      run: () => {
+        void performAction(
+          () => fileActions.bulkSpam(selected.map((file) => file.id)),
+          t("Elementos enviados a Spam"),
+          t("No se pudieron marcar los elementos como spam"),
+          () => setPaneSelectedKeys(pane, new Set()),
+        );
+      },
+    });
+    actions.push({
+      id: "trash",
+      label: t("Mover a la papelera"),
+      danger: true,
+      run: () => {
+        void trashFiles(
+          selected.map((file) => file.id),
+          pane,
+        );
+      },
+    });
+    return actions;
+  };
+
   const renderPane = (pane: PaneId) => {
     const location = paneLocation(pane);
     const files = paneFiles(pane);
@@ -799,6 +920,7 @@ export function FileManagerPage({
         onNavigatePath={(path) => navigatePane(pane, { path, query: "", view: location.view })}
         onViewChange={(view) => navigatePane(pane, { ...location, view }, true)}
         onOpen={(file) => openFile(file, pane)}
+        contextActions={(selected) => contextActions(pane, selected)}
         onBack={searchMode ? undefined : () => window.history.back()}
         selection={{
           selectedKeys,

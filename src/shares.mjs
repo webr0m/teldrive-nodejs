@@ -36,8 +36,13 @@ export class Shares {
     res.setHeader('Set-Cookie', `td_share_session=${credential}; Path=/api/v1/public/shares/${secret}; HttpOnly; SameSite=Lax; Max-Age=3600${this.config.production ? '; Secure' : ''}`);
   }
   file(s, fileId = s.fileId) {
-    if (!this.catalog.descendants(s.ownerId, s.fileId).has(fileId)) fail(404, 'file_not_in_share');
-    return this.catalog.get(s.ownerId, fileId, true);
+    // Playback ranges need only this ancestry, never the entire drive catalog.
+    const file = this.catalog.get(s.ownerId, fileId, true), seen = new Set(); let current = file;
+    while (current && !seen.has(current.id)) {
+      if (current.id === s.fileId) return file;
+      seen.add(current.id); current = current.parentId ? this.store.get('files', current.parentId) : undefined;
+    }
+    fail(404, 'file_not_in_share');
   }
   download(s) {
     const current = this.store.get('shares', s.id);

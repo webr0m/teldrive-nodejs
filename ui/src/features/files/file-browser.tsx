@@ -1,6 +1,11 @@
 import { t } from "@/lib/localization";
 import { Button, Card, Checkbox, Spinner } from "@heroui/react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import {
+  FileContextMenu,
+  type FileContextAction,
+  type FileContextState,
+} from "./file-context-menu";
 import {
   Collection,
   GridLayout,
@@ -30,6 +35,7 @@ type FileBrowserProps = {
   onNavigatePath: (path: string) => void;
   onViewChange: (view: FileBrowserView) => void;
   onOpen: (file: FileEntry) => void;
+  contextActions?: (files: FileEntry[]) => FileContextAction[];
   toolbar?: ReactNode;
   onBack?: () => void;
   selection?: {
@@ -60,6 +66,7 @@ export function FileBrowser({
   onNavigatePath,
   onViewChange,
   onOpen,
+  contextActions,
   toolbar,
   onBack,
   selection,
@@ -76,6 +83,34 @@ export function FileBrowser({
   showLocations = false,
   onOpenContainingFolder,
 }: FileBrowserProps) {
+  const [contextMenu, setContextMenu] = useState<FileContextState>();
+  useEffect(() => setContextMenu(undefined), [path, view, loading]);
+  const openContextMenu = (target: HTMLElement, x: number, y: number) => {
+    const row = target.closest<HTMLElement>("[data-file-id]");
+    const file = files.find((item) => item.id === row?.dataset.fileId);
+    if (selectionDisabled) return false;
+    const selected = file
+      ? selection?.selectedKeys === "all" || selection?.selectedKeys.has(file.id)
+        ? files.filter(
+            (item) => selection?.selectedKeys === "all" || selection?.selectedKeys.has(item.id),
+          )
+        : [file]
+      : [];
+    const actions =
+      contextActions?.(selected) ??
+      (file ? [{ id: "open", label: t("Abrir"), run: () => onOpen(file) }] : []);
+    if (!actions.length) return false;
+    if (file && !selected.some((item) => item.id === file.id)) return false;
+    if (
+      file &&
+      selection &&
+      selection.selectedKeys !== "all" &&
+      !selection.selectedKeys.has(file.id)
+    )
+      selection.onSelectionChange(new Set([file.id]));
+    setContextMenu({ x, y, actions });
+    return true;
+  };
   return (
     <Card className="@container/file-browser relative flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden border border-border bg-surface/80 shadow-sm">
       <Card.Header className="shrink-0 border-b border-border px-3 py-3 sm:px-4">
@@ -139,13 +174,24 @@ export function FileBrowser({
             <Spinner size="lg" />
           </div>
         ) : (
-          <div className="h-full min-h-0">
+          <fieldset
+            className="m-0 h-full min-h-0 min-w-0 border-0 p-0"
+            aria-label={t("Explorador de archivos")}
+            onKeyDown={(event) => {
+              if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+                const target = event.target as HTMLElement,
+                  rect = target.getBoundingClientRect();
+                if (openContextMenu(target, rect.left + 16, rect.top + 24)) event.preventDefault();
+              }
+            }}
+          >
             <FileCollection
               files={files}
               view={view}
               selection={selection}
               selectionDisabled={selectionDisabled}
               onOpen={onOpen}
+              onContextMenu={openContextMenu}
               dimmedIds={dimmedIds}
               hasNextPage={hasNextPage}
               isLoadingMore={isLoadingMore}
@@ -155,10 +201,15 @@ export function FileBrowser({
               showLocations={showLocations}
               onOpenContainingFolder={onOpenContainingFolder}
             />
-          </div>
+          </fieldset>
         )}
       </Card.Content>
       {selectionOverlay}
+      <FileContextMenu
+        menu={contextMenu}
+        onClose={() => setContextMenu(undefined)}
+        disabled={selectionDisabled}
+      />
     </Card>
   );
 }
@@ -178,6 +229,7 @@ function FileCollection({
   emptyTitle,
   showLocations,
   onOpenContainingFolder,
+  onContextMenu,
 }: {
   files: FileEntry[];
   view: FileBrowserView;
@@ -193,6 +245,7 @@ function FileCollection({
   emptyTitle: string;
   showLocations: boolean;
   onOpenContainingFolder?: (file: FileEntry) => void;
+  onContextMenu: (target: HTMLElement, x: number, y: number) => boolean;
 }) {
   const grid = view === "grid";
   const selectedKeys = selection?.selectedKeys ?? new Set<React.Key>();
@@ -209,6 +262,12 @@ function FileCollection({
         onSelectionChange={selection?.onSelectionChange}
         disabledKeys={selectionDisabled ? files.map((file) => file.id) : undefined}
         disabledBehavior="selection"
+        onContextMenu={(event) => {
+          if (onContextMenu(event.target as HTMLElement, event.clientX, event.clientY)) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        }}
         onClick={(event) => {
           if (!selection) return;
           const target = event.target as HTMLElement;
@@ -237,6 +296,7 @@ function FileCollection({
           {(file) => (
             <GridListItem
               id={file.id}
+              data-file-id={file.id}
               textValue={file.name}
               className={(state) =>
                 grid

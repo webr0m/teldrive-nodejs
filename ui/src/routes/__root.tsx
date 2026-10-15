@@ -21,7 +21,7 @@ import {
   useNavigate,
 } from "@tanstack/react-router";
 import { useTheme } from "@/lib/theme";
-import { type Ref, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import LogoutIcon from "~icons/gravity-ui/arrow-right-from-square";
 import MenuIcon from "~icons/gravity-ui/bars";
@@ -46,7 +46,12 @@ import { getQueryClient } from "../lib/queryClient";
 const mainNav = [
   { label: t("Archivos"), icon: GridIcon, path: "/files" },
   { label: t("Compartidos"), icon: FolderIcon, path: "/shared" },
-  { label: t("Compartido conmigo"), icon: FolderIcon, path: "/shared-with-me" },
+  {
+    label: t("Compartido conmigo"),
+    icon: FolderIcon,
+    path: "/shared-with-me",
+    capability: "files.manageGrants",
+  },
   { label: t("Tareas"), icon: TasksIcon, path: "/tasks", capability: "system.manageJobs" },
   { label: t("Spam"), icon: GridIcon, path: "/spam" },
   { label: t("Papelera"), icon: GridIcon, path: "/trash" },
@@ -210,27 +215,14 @@ function Sidebar({
               aria-label={t("Cuenta")}
               onAction={(key) => {
                 if (key === "logout") void signOut();
+                if (key === "settings") {
+                  setAccountMenuOpen(false);
+                  onNavigate?.();
+                  void navigate({ to: "/settings" });
+                }
               }}
             >
-              <Dropdown.Item
-                id="settings"
-                textValue={t("Configuración")}
-                render={({ ref, ...itemProps }) => {
-                  return (
-                    // @ts-expect-error HeroUI types render props for a menu item div; this render target is an anchor.
-                    <Link
-                      {...itemProps}
-                      ref={ref as Ref<HTMLAnchorElement>}
-                      to="/settings"
-                      preload="intent"
-                      onClick={() => {
-                        setAccountMenuOpen(false);
-                        onNavigate?.();
-                      }}
-                    />
-                  );
-                }}
-              >
+              <Dropdown.Item id="settings" textValue={t("Configuración")}>
                 <SettingsIcon className="size-4" />
                 <Label>{t("Configuración")}</Label>
               </Dropdown.Item>

@@ -54,6 +54,21 @@ test('Node authenticates its own bot key instead of opening the Go session', asy
   const previous=t.botStateId(bot); t.config.telegramInstanceId='another-node-instance'; assert.notEqual(t.botStateId(bot),previous);
   assert.equal(bot.sessionCiphertext,'must-not-open-the-Go-key');
 });
+
+test('bot clients reuse independent keys, survive reader cancellation and stay within the configured idle pool',async()=>{
+  const {store,telegram:t}=fixture();t.config.botClientPoolSize=1;t.config.botClientIdleSeconds=30;
+  let connections=0,disconnections=0;
+  t.make=()=>({connected:true,connect:async()=>{connections++},checkAuthorization:async()=>true,session:{save:()=> 'node-only'},disconnect:async()=>{disconnections++}});
+  try{
+    const bot=store.get('bots','1');await t.withBot(bot,async()=>{});await t.withBot(bot,async()=>{});assert.equal(connections,1);
+    await assert.rejects(()=>t.withBot(bot,async()=>{throw Object.assign(new Error('cancelled'),{name:'AbortError'})}),{name:'AbortError'});
+    await t.withBot(bot,async()=>{});assert.equal(connections,1,'closing a range must not discard a healthy authenticated connection');
+    assert.equal(t.eligibleBots('7','download')[0].id,'1','idle authenticated bot is preferred');
+    await t.withBot(store.get('bots','2'),async()=>{});assert.equal(t.botClients.size,1);assert.equal(disconnections,1);
+    t.config.botClientPoolSize=0;await t.withBot(store.get('bots','2'),async()=>{});assert.equal(t.botClients.size,0);
+  }finally{await t.close();}
+  assert.equal(t.clients.size,0);
+});
 test('unaligned range resumes after partial bot failure without duplicating bytes', async () => {
   const { telegram: t } = fixture(), data = randomBytes(2 * 512 * 1024 + 100), chunks = [], calls = [];
   const client = (broken) => ({ async *iterDownload(_message, params) {

@@ -4,6 +4,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { $api, fetchClient } from "@/api/client";
+import { useCurrentUser } from "@/auth/use-current-user";
 import { userMessage } from "@/api/errors";
 import type { FileCategory, FileEntry } from "@/api/types";
 import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
@@ -26,6 +27,10 @@ export const Route = createFileRoute("/trash")({
 });
 
 export function QuarantinePage({ spam = false }: { spam?: boolean }) {
+  const account = useCurrentUser();
+  const supportsGrants = (account.data.capabilities as readonly string[]).includes(
+    "files.manageGrants",
+  );
   const title = spam ? t("Spam") : t("Papelera");
   const [category, setCategory] = useState<FileCategory | "folder" | "">("");
   const [after, setAfter] = useState("");
@@ -48,7 +53,7 @@ export function QuarantinePage({ spam = false }: { spam?: boolean }) {
     spam ? "spam" : "trashed",
     validRange,
   );
-  const incoming = $api.useQuery("get", "/v1/shared/spam", {}, { enabled: spam });
+  const incoming = $api.useQuery("get", "/v1/shared/spam", {}, { enabled: spam && supportsGrants });
   const incomingIds = new Set(incoming.data?.map((file) => file.id) ?? []);
   const incomingFiles = (incoming.data ?? []).filter((file) => {
     if (!validRange) return false;
@@ -67,7 +72,8 @@ export function QuarantinePage({ spam = false }: { spam?: boolean }) {
   const actions = useFileActions();
   const [incomingPending, setIncomingPending] = useState(false);
   const pending = actions.pending || incomingPending;
-  const refresh = () => Promise.all([query.refetch(), ...(spam ? [incoming.refetch()] : [])]);
+  const refresh = () =>
+    Promise.all([query.refetch(), ...(spam && supportsGrants ? [incoming.refetch()] : [])]);
   const [purging, setPurging] = useState<FileEntry>();
   const [cleaningTrash, setCleaningTrash] = useState(false);
 
@@ -127,11 +133,15 @@ export function QuarantinePage({ spam = false }: { spam?: boolean }) {
       <PageHeader
         title={title}
         description={
-          spam
+          spam && !supportsGrants
             ? t(
-                "Elementos puestos en cuarentena durante 30 días. En los recibidos se retira tu acceso sin borrar el original del propietario. En los propios se retiran los enlaces; restaurarlos no vuelve a compartirlos.",
+                "Elementos propios puestos en cuarentena. Restaurarlos no reactiva los enlaces creados en esta aplicación.",
               )
-            : t("Restaura los elementos eliminados o elimínalos definitivamente de Teldrive.")
+            : spam
+              ? t(
+                  "Elementos puestos en cuarentena durante 30 días. En los recibidos se retira tu acceso sin borrar el original del propietario. En los propios se retiran los enlaces; restaurarlos no vuelve a compartirlos.",
+                )
+              : t("Restaura los elementos eliminados o elimínalos definitivamente de Teldrive.")
         }
         actions={
           <div className="flex items-center gap-2">

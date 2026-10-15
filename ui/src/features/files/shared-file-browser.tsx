@@ -13,12 +13,14 @@ import TrashIcon from "~icons/gravity-ui/trash-bin";
 import CloseIcon from "~icons/gravity-ui/xmark";
 import { $api, fetchClient } from "@/api/client";
 import { userMessage } from "@/api/errors";
+import { useCurrentUser } from "@/auth/use-current-user";
 import type { FileEntry } from "@/api/types";
 import { AppDialog } from "@/components/dialogs/app-dialog";
 import { FilePreviewDialog, isPreviewable } from "@/components/file-preview-dialog";
 import { Page, PageContent } from "@/components/page";
 import { startFileDownload } from "@/features/files/download";
 import { FileBrowser, type FileBrowserView } from "@/features/files/file-browser";
+import type { FileContextAction } from "./file-context-menu";
 import { useFileActions } from "@/features/files/mutations";
 import { ShareDialog } from "@/features/files/share-dialog";
 import { useUploadStore } from "@/features/uploads/store";
@@ -52,6 +54,10 @@ export function sharedBrowserSearch(search: Record<string, unknown>): SharedBrow
 }
 
 export function SharedFileBrowser({ mode, search, navigate }: SharedFileBrowserProps) {
+  const account = useCurrentUser();
+  const supportsGrants = (account.data.capabilities as readonly string[]).includes(
+    "files.manageGrants",
+  );
   const [previewFile, setPreviewFile] = useState<FileEntry>();
   const [selectedKeys, setSelectedKeys] = useState<Selection>(new Set());
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
@@ -182,9 +188,11 @@ export function SharedFileBrowser({ mode, search, navigate }: SharedFileBrowserP
     if (mode !== "shared" || !atRoot || !selectedFiles.length) return;
     try {
       for (const file of selectedFiles) {
-        const { data: grants } = await fetchClient.GET("/v1/files/{fileId}/grants", {
-          params: { path: { fileId: file.id } },
-        });
+        const { data: grants } = supportsGrants
+          ? await fetchClient.GET("/v1/files/{fileId}/grants", {
+              params: { path: { fileId: file.id } },
+            })
+          : { data: [] };
 
         const shareIds: string[] = [];
         let cursor: string | undefined;
@@ -278,6 +286,32 @@ export function SharedFileBrowser({ mode, search, navigate }: SharedFileBrowserP
           }}
           onViewChange={(view) => navigate({ ...search, view }, true)}
           onOpen={openFile}
+          contextActions={(selected) => {
+            const actions: FileContextAction[] = [];
+            if (selected.length === 1) {
+              const file = selected[0];
+              actions.push({ id: "open", label: t("Abrir"), run: () => openFile(file) });
+              if (file.kind === "file")
+                actions.push({
+                  id: "download",
+                  label: t("Descargar"),
+                  run: () => startFileDownload(file),
+                });
+              if (permissionFor(file) === "edit") {
+                actions.push({
+                  id: "rename",
+                  label: t("Renombrar"),
+                  run: () => {
+                    setRenameFile(file);
+                    setRenameName(file.name);
+                  },
+                });
+                actions.push({ id: "share", label: t("Compartir"), run: () => setShareFile(file) });
+              }
+            }
+            return actions;
+          }}
+          selectionDisabled={fileActions.pending}
           onBack={() => window.history.back()}
           selection={{
             selectedKeys,

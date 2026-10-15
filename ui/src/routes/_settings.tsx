@@ -1,8 +1,7 @@
 import { t } from "@/lib/localization";
 import { Button, Modal, Separator, Typography } from "@heroui/react";
-import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import KeyIcon from "~icons/gravity-ui/key";
 import MenuIcon from "~icons/gravity-ui/bars";
 import PaletteIcon from "~icons/gravity-ui/palette";
@@ -14,7 +13,7 @@ import UploadIcon from "~icons/gravity-ui/arrow-up-from-line";
 import CloseIcon from "~icons/gravity-ui/xmark";
 import ClockIcon from "~icons/gravity-ui/clock";
 import InfoIcon from "~icons/gravity-ui/circle-info";
-import { currentUserQueryOptions } from "@/auth/queries";
+import { useCurrentUser } from "@/auth/use-current-user";
 
 const SETTINGS_GROUPS = [
   {
@@ -54,7 +53,12 @@ const SETTINGS_GROUPS = [
   {
     label: t("Sistema"),
     items: [
-      { label: t("Límites del servidor"), path: "/settings/server", icon: StorageIcon, capability: "system.manageUsers" },
+      {
+        label: t("Límites del servidor"),
+        path: "/settings/server",
+        icon: StorageIcon,
+        capability: "system.manageUsers",
+      },
       {
         label: t("Tareas periódicas"),
         path: "/settings/periodic-jobs",
@@ -70,8 +74,9 @@ export const Route = createFileRoute("/_settings")({ component: SettingsLayout }
 
 function SettingsLayout() {
   const location = useLocation();
-  const { data: user } = useQuery(currentUserQueryOptions());
+  const { data: user } = useCurrentUser();
   const [mobileOpen, setMobileOpen] = useState(false);
+  useEffect(() => setMobileOpen(false), [location.pathname]);
   const visibleGroups = settingsGroupsFor(user?.capabilities ?? []);
   const activeLabel = visibleGroups.reduce<string | undefined>(
     (found, group) => found ?? group.items.find((item) => item.path === location.pathname)?.label,

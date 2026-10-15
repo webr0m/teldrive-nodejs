@@ -43,7 +43,7 @@ export class Auth {
     if (credential) {
       const s = this.store.get('session-index', hash(credential));
       const session = s && this.store.get('sessions', s.sessionId);
-      if (!session || session.revokedAt || expired(session.accessExpiresAt) || session.accessHash !== hash(credential)) fail(401, 'invalid_session');
+      if (!session || session.revokedAt || expired(session.expiresAt) || expired(session.accessExpiresAt) || session.accessHash !== hash(credential)) fail(401, 'invalid_session');
       return { user: this.user(session.userId), session, apiKey: false };
     }
     if (allowTicket && query.has('ticket')) {

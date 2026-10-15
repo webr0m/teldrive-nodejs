@@ -85,10 +85,13 @@ export class Uploads {
       await this.cleanParts(userId, u.parts); u.parts = []; this.store.put('uploads', u);
     });
   }
-  async cleanParts(userId, parts) {
+  referencedParts() { return new Set(this.store.list('files').flatMap(file => (file.parts || []).map(part => part.objectId ? `local:${part.objectId}` : `telegram:${part.channelId}:${part.messageId}`))); }
+  async cleanParts(userId, parts, referenced) {
+    if (!parts.length) return;
+    referenced ??= this.referencedParts();
     for (const p of parts) {
-      const referenced = this.store.list('files').some(f => f.parts?.some(x => x.objectId ? x.objectId === p.objectId : x.channelId === p.channelId && x.messageId === p.messageId));
-      if (!referenced) await this.storage.remove(userId, p);
+      const key = p.objectId ? `local:${p.objectId}` : `telegram:${p.channelId}:${p.messageId}`;
+      if (!referenced.has(key)) await this.storage.remove(userId, p);
     }
   }
   queueCleanup(userId, parts) {
@@ -96,8 +99,11 @@ export class Uploads {
   }
   async drainCleanup() {
     return this.locks.run('cleanup', async () => {
-      for (const record of this.store.list('cleanup').slice(0, 100)) {
-        try { await this.cleanParts(record.ownerId, [record.part]); this.store.delete('cleanup', record.id); }
+      const records = this.store.list('cleanup').slice(0, 100);
+      if (!records.length) return;
+      const referenced = this.referencedParts();
+      for (const record of records) {
+        try { await this.cleanParts(record.ownerId, [record.part], referenced); this.store.delete('cleanup', record.id); }
         catch { /* Keep the complete descriptor for the next retry, including after a restart. */ }
       }
     });
@@ -112,7 +118,8 @@ export class Uploads {
       const parts = new Map(), queued = [];
       try {
         return await this.locks.run('cleanup', async () => {
-        for (const file of this.catalog.all(userId).filter(f => descendants.has(f.id) && this.catalog.isActive(userId, f))) {
+        const tree = this.catalog.tree(userId);
+        for (const file of tree.files.filter(f => descendants.has(f.id) && tree.active(f))) {
           const clones = [];
           for (const part of file.parts || []) { const clone = await this.storage.clone(userId, part); clones.push(clone); queued.push(...this.queueCleanup(userId, [clone])); }
           parts.set(file.id, clones);
@@ -124,7 +131,7 @@ export class Uploads {
   }
   async purge(userId, fileId) {
     return this.locks.run(`catalog:${userId}`, async () => {
-      const root = this.catalog.get(userId, fileId); if (root.status !== 'trashed') fail(409, 'trash_first');
+      const root = this.catalog.get(userId, fileId); if (!['trashed','spam'].includes(root.status)) fail(409, 'trash_first');
       const ids = this.catalog.descendants(userId, fileId), files = this.catalog.all(userId).filter(f => ids.has(f.id));
       const byId = new Map(files.map(f => [f.id, f]));
       const depth = f => { let d = 0; const seen = new Set(); while (byId.has(f.parentId) && !seen.has(f.parentId)) { seen.add(f.parentId); f = byId.get(f.parentId); d++; } return d; };

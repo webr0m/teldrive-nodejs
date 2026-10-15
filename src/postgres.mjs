@@ -7,6 +7,8 @@ export class PostgresStore {
     this.worker = new Worker(new URL('./pg-worker.mjs', import.meta.url), { execArgv: [], workerData: { url: config.databaseUrl, fixture: config.testFixture } });
     this.control = new SharedArrayBuffer(8); this.output = new SharedArrayBuffer(32 * 1024 * 1024);
     this.worker.unref();
+    this.worker.on('error',()=>{this.failed=true;});
+    this.worker.on('exit',()=>{this.failed=true;});
     if (config.databaseLayout !== 'native') {
       const columns = this.query('SELECT table_name,column_name,data_type FROM information_schema.columns WHERE table_schema=$1', [config.databaseSchema]);
       const detected = columns.some(c => c.table_name === 'files' && c.column_name === 'kind') ? 'v2' : 'legacy';
@@ -27,9 +29,10 @@ export class PostgresStore {
     this.query(`CREATE SCHEMA IF NOT EXISTS ${this.metadata}; CREATE TABLE IF NOT EXISTS ${this.metadata}.records (bucket text NOT NULL,id text NOT NULL,owner text NOT NULL,body jsonb NOT NULL,PRIMARY KEY(bucket,id)); CREATE INDEX IF NOT EXISTS records_owner_idx ON ${this.metadata}.records(bucket,owner);`);
   }
   query(sql, values = []) {
+    if (this.failed) fail(503,'postgres_unavailable');
     const control = this.control, output = this.output, flags = new Int32Array(control); Atomics.store(flags, 0, 0);
     this.worker.postMessage({ sql, values, control, output });
-    if (Atomics.wait(flags, 0, 0, 35000) === 'timed-out') { this.worker.terminate(); fail(503, 'postgres_timeout'); }
+    if (Atomics.wait(flags, 0, 0, 35000) === 'timed-out') { this.failed = true; this.worker.terminate(); fail(503, 'postgres_timeout'); }
     const response = JSON.parse(Buffer.from(output, 0, Atomics.load(flags, 1)).toString());
     if (response.error) { const error = Object.assign(new Error(response.error.message), response.error); if (response.error.code === '23505') { error.status = 409; error.code = 'name_conflict'; } throw error; }
     return response.rows;
