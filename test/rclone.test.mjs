@@ -14,6 +14,7 @@ import {
 } from "@webr0m/rclone-teldrive";
 import { createApp } from "../src/server.mjs";
 import { config } from "../src/config.mjs";
+import { hash } from "../src/core.mjs";
 import { TreeHash, BLOCK_SIZE } from "../src/tree-hash.mjs";
 import { Rclone } from "../src/rclone.mjs";
 import { createRcloneAgent } from "../src/rclone-agent.mjs";
@@ -314,6 +315,131 @@ test("real tgdrive/rclone + rclone-sdk: multipart encrypted transfers, hashes, j
     assert.ok((await stat(target)).size > 0);
   } finally {
     await drive?.close();
+    await f.close();
+  }
+});
+
+test("browser-only connection creates one private reusable key, downloads directly and respects revocation", {
+  skip: !existsSync(binary) && "Run npm run install:rclone first",
+  timeout: 60000,
+}, async () => {
+  const f = await fixture();
+  let second;
+  try {
+    f.app.context.config.rcloneExecutable = binary;
+    const action = (method, params) =>
+      fetch(`${f.base}/api/v1/rclone/actions`, {
+        method: "POST",
+        headers: { Cookie: f.cookie, "Content-Type": "application/json" },
+        body: JSON.stringify({ method, params }),
+      });
+    assert.equal(
+      (await f.request("/rclone/actions", "POST", { method: "rclone.connect" })).status,
+      403,
+    );
+    assert.equal((await action("rclone.connect", { chunkMiB: 17 })).status, 422);
+    assert.equal(
+      f.app.context.store.list("keys", "1").length,
+      1,
+      "invalid options create no credentials",
+    );
+    const response = await action("rclone.connect");
+    assert.equal(response.status, 200);
+    const info = await response.json();
+    assert.equal(info.configured, true);
+    const credential = f.app.context.rclone.configFor("1");
+    assert.equal(
+      JSON.stringify(info).includes(credential.apiKey),
+      false,
+      "browser never receives the private key",
+    );
+    assert.equal(
+      JSON.stringify(f.app.context.rclone.state.get("web-key", "1")).includes(credential.apiKey),
+      false,
+    );
+    assert.equal(f.app.context.store.list("keys", "1").length, 2);
+    assert.equal((await action("rclone.connect")).status, 200);
+    assert.equal(f.app.context.rclone.configFor("1").apiKey, credential.apiKey);
+    second = new Rclone(f.app.context.config);
+    await second.connectWeb("1", f.app.context.store);
+    assert.equal(
+      f.app.context.store.list("keys", "1").length,
+      2,
+      "another worker reuses the credential",
+    );
+    assert.equal(second.managed.size, 0, "another worker reuses the daemon");
+    const parent = f.app.context.catalog.create("1", { name: "Privado" });
+    const bytes = Buffer.from("descarga directa sin archivo temporal");
+    const upload = await (
+      await f.request("/uploads", "POST", {
+        name: "directo.txt",
+        parentId: parent.id,
+        size: bytes.length,
+      })
+    ).json();
+    assert.equal(
+      (
+        await f.request(`/uploads/${upload.id}/parts/1`, "PUT", bytes, {
+          "Content-Type": "application/octet-stream",
+        })
+      ).status,
+      201,
+    );
+    assert.equal((await f.request(`/uploads/${upload.id}/complete`, "POST", {})).status, 201);
+    const download = await action("rclone.browser-download", { path: "Privado/directo.txt" });
+    assert.equal(download.status, 200);
+    const file = await download.json();
+    assert.equal(file.name, "directo.txt");
+    const content = await fetch(`${f.base}/api/v1/files/${file.id}/content?download=1`, {
+      headers: { Cookie: f.cookie },
+    });
+    assert.equal(content.status, 200);
+    assert.deepEqual(Buffer.from(await content.arrayBuffer()), bytes);
+    assert.equal(
+      (await f.app.context.rclone.localBrowse("1")).items.length,
+      0,
+      "browser download uses no staging space",
+    );
+    assert.equal((await action("rclone.browser-download", { path: "../directo.txt" })).status, 422);
+    f.app.context.catalog.trash("1", parent.id);
+    assert.equal(
+      (await action("rclone.browser-download", { path: "Privado/directo.txt" })).status,
+      404,
+    );
+    const key = f.app.context.store.get("keys", hash(credential.apiKey));
+    assert.equal((await f.request(`/api-keys/${key.keyId}`, "DELETE")).status, 204);
+    assert.equal(
+      (await f.request("/me", "GET", undefined, { "X-Api-Key": credential.apiKey })).status,
+      401,
+    );
+    assert.equal((await action("rclone.connect")).status, 200);
+    assert.notEqual(f.app.context.rclone.configFor("1").apiKey, credential.apiKey);
+    assert.equal(
+      f.app.context.store
+        .list("keys", "1")
+        .filter((key) => key.purpose === "rclone-web" && !key.revokedAt).length,
+      1,
+    );
+    const user = f.app.context.auth.publish(
+      f.app.context.auth.finish({ id: 2, firstName: "Non administrator" }),
+      undefined,
+      false,
+    );
+    assert.equal(
+      (
+        await fetch(`${f.base}/api/v1/rclone/actions`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${user.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ method: "rclone.connect" }),
+        })
+      ).status,
+      403,
+    );
+  } finally {
+    await second?.close();
     await f.close();
   }
 });

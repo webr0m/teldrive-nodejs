@@ -17,6 +17,8 @@ pnpm run demo
 
 La demo escucha solamente en `http://127.0.0.1:3000`, utiliza disco local y no necesita Telegram. El acceso de demostración está bloqueado en producción.
 
+Para usar una instalación publicada basta el navegador. **Configuración → Rclone → Web · sin instalar en mi PC → Usar mi cuenta de Teldrive** conecta la cuenta automáticamente, sin instalar el componente local ni copiar credenciales. Consulta [la integración web de rclone](docs/RCLONE.md). El montaje de una unidad del sistema requiere soporte del equipo donde se realiza.
+
 ## Telegram y configuración
 
 Copia `.env.example` a `.env` y configura `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `ALLOWED_USERS`, `DATA_KEY` y `PUBLIC_URL`. Genera `DATA_KEY` con:

@@ -1,6 +1,6 @@
 {
   "name": "teldrive-nodejs",
-  "version": "0.4.1-alpha",
+  "version": "0.4.2-alpha",
   "private": true,
   "description": "Native Node.js Telegram drive and optional compatibility gateway",
   "type": "commonjs",

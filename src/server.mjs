@@ -48,6 +48,14 @@ route('GET', '/api/health/ready', c => { c.store.ready(); return result({ status
 route('GET', '/api/config', c => result({ mode: 'native', storage: c.config.backend, demo: c.config.demo, partSize: c.config.partSize, maxFileSize: c.config.maxFileSize, maxConcurrentTransfers: c.config.concurrency, uploadRetryAttempts: c.config.uploadRetryAttempts, rcloneAgentOrigin: c.config.rcloneAgentOrigin }), { public: true });
 route('POST', '/api/v1/rclone/actions', async c => {
   admin(c.user); if(c.apiKey) fail(403, 'session_required');
+  if (c.body.method === 'rclone.connect') return result(await c.rclone.connectWeb(c.user.id, c.store, c.body.params));
+  if (c.body.method === 'rclone.browser-download') {
+    const remote = c.body.params?.path;
+    if (typeof remote !== 'string' || !remote || /[\\\x00-\x1f]/.test(remote) || remote.split('/').some(segment => ['.', '..'].includes(segment))) fail(422, 'invalid_rclone_path');
+    const file = c.catalog.list(c.user.id, new URLSearchParams({ path: path.posix.dirname(remote) === '.' ? '/' : path.posix.dirname(remote) })).find(file => file.name === path.posix.basename(remote) && file.kind === 'file');
+    if (!file) fail(404, 'file_not_found');
+    return result({ id: file.id, name: file.name });
+  }
   return result(await c.rclone.request(c.user.id, c.body.method, c.body.params));
 });
 route('PUT', '/api/v1/rclone/staging/:filename', async c => { admin(c.user); if(c.apiKey)fail(403,'session_required'); return result(await c.rclone.stage(c.user.id,c.params.filename,c.req),201); }, { raw: true });

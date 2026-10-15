@@ -1,15 +1,24 @@
 # Rclone y montaje persistente
 
-Desde **Configuración → Rclone**, el control existente admite dos destinos independientes: **Servidor de Teldrive** y **Mi PC**. Cada destino guarda su propia conexión, transferencias, caché y montaje. El explorador de Teldrive Desktop se conserva para el cliente Windows anterior.
+Desde **Configuración → Rclone**, el control existente admite dos destinos independientes: **Web · sin instalar en mi PC** y **Mi PC · componente local opcional**. Cada destino guarda su propia conexión, transferencias, caché y montaje. El explorador de Teldrive Desktop se conserva para el cliente Windows anterior.
 
 La integración usa [rclone-sdk](https://github.com/rclone-ui/rclone-sdk) con nuestra extensión [`@webr0m/rclone-teldrive`](../packages/rclone-teldrive/README.md) y el ejecutable [tgdrive/rclone v1.75.4](https://github.com/tgdrive/rclone/releases/tag/v1.75.4). El motor de rclone sigue escrito en Go; Node administra su API RC. El cliente antiguo que utiliza `access_token` no sirve para esta API con `api_key`.
 
-## Servidor
+## Usar solamente el navegador
+
+1. Abre **Configuración → Rclone**, conserva **Web · sin instalar en mi PC** y pulsa **Usar mi cuenta de Teldrive**. Necesitas una sesión de propietario o administrador.
+2. La aplicación prepara automáticamente una credencial privada para tu cuenta y la guarda cifrada en el servidor. No se entrega su secreto al navegador ni se pide copiar una clave. Reconectar reutiliza la misma credencial y el proceso existente, incluso desde otro trabajador Passenger.
+3. Explora las carpetas, sube archivos y consulta Transferencias. **Descargar en mi navegador** usa la descarga nativa por streaming, sin crear primero una copia temporal en el hosting ni cargar el archivo completo en memoria JavaScript. **Descargar en Servidor de Teldrive** conserva la opción de preparar un archivo en el área temporal privada.
+
+No necesitas instalar Node, rclone, FUSE, WinFsp ni el componente local en tu PC para este modo. La opción de montaje corresponde al servidor y depende de sus permisos; usar la web no monta una unidad en el Explorador de Windows.
+
+La credencial aparece como **Teldrive web · rclone del servidor** en Claves de API y se puede revocar allí. No se renueva en segundo plano: después de revocarla debes pulsar de nuevo el botón de conexión para generar su reemplazo. Los parámetros de transferencia se pueden modificar en **Configuración avanzada y clientes externos → Guardar ajustes de transferencia en la web**. Esta acción conserva la identidad de la cuenta y la credencial privada, independientemente del host o clave escritos para clientes externos.
+
+## Preparar el servidor
 
 1. Instala las dependencias e inicia `node scripts/install-rclone.mjs`. Descarga únicamente la release fijada de tgdrive/rclone y verifica su SHA256 contra el digest de su asset oficial. No reemplaza el rclone del sistema.
-2. Crea una clave dedicada desde Configuración → Claves de API y escríbela en el formulario de Rclone.
-3. Selecciona **Servidor de Teldrive** y pulsa **Guardar conexión en el servidor**. El control del servidor requiere una sesión de propietario o administrador; no acepta claves de API como credencial de administración.
-4. Usa Archivos o Transferencias. Las descargas preparadas por rclone quedan en el área temporal privada de esa cuenta; puedes guardarlas en el navegador desde esa lista.
+2. El motor ya está instalado en la producción actual de Namecheap. En otra instalación, este paso lo realiza el administrador del servidor una vez; el visitante no instala programas.
+3. Usa la conexión automática descrita arriba. El control del servidor no acepta claves de API como credencial de administración.
 
 Los archivos temporales tienen una cuota por cuenta. El control web no puede explorar el resto del sistema de archivos ni ejecutar comandos RC arbitrarios. Los cambios a límites desde Administración se aplican al controlador del servidor.
 
@@ -22,7 +31,7 @@ node scripts/install-rclone.mjs
 node scripts/rclone-agent.mjs --url https://cloud.webrom.lat --show-pair-code
 ```
 
-Selecciona **Mi PC (componente local)** en el mismo menú, introduce el código que muestra tu terminal y pulsa **Vincular este equipo**. Guarda luego la conexión con una clave de API dedicada. No compartas el código de vinculación: autoriza el control del componente local. El navegador lo conserva durante esta sesión de pestañas; el componente conserva sus credenciales y montajes aunque cierres el navegador.
+Selecciona **Mi PC · componente local opcional** en el mismo menú, introduce el código que muestra tu terminal y pulsa **Vincular este equipo**. Para esta opción, crea una clave dedicada en Claves de API y escríbela en **Configuración avanzada y clientes externos**. Guarda luego la conexión en mi PC. No compartas el código de vinculación: autoriza el control del componente local. El navegador lo conserva durante esta sesión de pestañas; el componente conserva sus credenciales y montajes aunque cierres el navegador.
 
 El componente escucha solamente en `127.0.0.1:5573`. Exige su código en cada petición y acepta únicamente el origen de Teldrive indicado con `--url`. El navegador puede pedir permiso de red local. Si no lo admite, puedes seguir usando la extensión de Node o el cliente de escritorio. Para otro puerto configura `--port` y el mismo `RCLONE_AGENT_ORIGIN` en el servidor web; su política CSP permite solamente ese origen de loopback.
 

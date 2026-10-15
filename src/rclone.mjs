@@ -10,7 +10,7 @@ import {
   startTeldriveRclone,
   openTeldriveRemote,
 } from "../packages/rclone-teldrive/index.mjs";
-import { Store, CryptoBox, Locks, id, hash, now, fail, number } from "./core.mjs";
+import { Store, CryptoBox, Locks, id, hash, now, fail, number, token, expired } from "./core.mjs";
 
 const alive = (pid) => {
   try {
@@ -30,6 +30,19 @@ const drivePath = (value = "") => {
     fail(422, "invalid_rclone_path");
   return value.replace(/^\/+|\/+$/g, "");
 };
+function transferOptions(options, previous = {}) {
+  const value = {
+    chunkMiB: options.chunkMiB ?? previous.chunkMiB ?? 64,
+    concurrency: options.concurrency ?? previous.concurrency ?? 2,
+    encrypt: options.encrypt !== undefined ? options.encrypt : (previous.encrypt ?? false),
+    hash: options.hash !== undefined ? options.hash : (previous.hash ?? true),
+  };
+  number(value.chunkMiB, 16, 2000);
+  number(value.concurrency, 1, 64);
+  if (value.chunkMiB % 16 || typeof value.encrypt !== "boolean" || typeof value.hash !== "boolean")
+    fail(422, "invalid_rclone_options");
+  return value;
+}
 export function defaultRclonePath(dataDir) {
   const platform = { win32: "windows", linux: "linux", darwin: "osx" }[process.platform],
     arch = { x64: "amd64", arm64: "arm64" }[process.arch];
@@ -95,7 +108,7 @@ export class Rclone {
       maxCacheHours: this.config.rcloneMaxCacheHours ?? 720,
     };
   }
-  async configure(user, options) {
+  async configure(user, options, { verifiedOwner } = {}) {
     let apiHost;
     try {
       const url = new URL(options.apiHost || this.config.publicUrl);
@@ -114,22 +127,18 @@ export class Rclone {
       );
     if (typeof options.apiKey !== "string" || !/^[A-Za-z0-9_-]{20,256}$/.test(options.apiKey))
       fail(422, "invalid_api_key");
-    number(options.chunkMiB ?? 64, 16, 2000);
-    number(options.concurrency ?? 2, 1, 64);
-    if (
-      (options.chunkMiB ?? 64) % 16 ||
-      (options.encrypt !== undefined && typeof options.encrypt !== "boolean") ||
-      (options.hash !== undefined && typeof options.hash !== "boolean")
-    )
-      fail(422, "invalid_rclone_options");
-    const response = await fetch(`${apiHost}/api/v1/me`, {
-      headers: { "X-Api-Key": options.apiKey },
-      signal: AbortSignal.timeout(30000),
-    });
-    if (!response.ok) fail(422, "rclone_key_rejected", "Teldrive rechazó la clave de API.");
-    const profile = await response.json();
-    if (!this.local && String(profile.id ?? profile.userId) !== String(user))
-      fail(403, "rclone_key_owner_mismatch");
+    const transfers = transferOptions(options);
+    let owner = verifiedOwner;
+    if (owner === undefined) {
+      const response = await fetch(`${apiHost}/api/v1/me`, {
+        headers: { "X-Api-Key": options.apiKey },
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!response.ok) fail(422, "rclone_key_rejected", "Teldrive rechazó la clave de API.");
+      const profile = await response.json();
+      owner = profile.id ?? profile.userId;
+    }
+    if (!this.local && String(owner) !== String(user)) fail(403, "rclone_key_owner_mismatch");
     if (
       (await this.jobs(user)).some((j) => j.status === "running") ||
       (await this.mountState(user)).running
@@ -144,10 +153,7 @@ export class Rclone {
       name: "teldrive",
       apiHost,
       apiKey: options.apiKey,
-      chunkMiB: options.chunkMiB ?? 64,
-      concurrency: options.concurrency ?? 2,
-      encrypt: options.encrypt ?? false,
-      hash: options.hash ?? true,
+      ...transfers,
     };
     const remote = await startTeldriveRclone({
       ...value,
@@ -160,6 +166,91 @@ export class Rclone {
     });
     this.saveRuntime(user, remote);
     return this.info(user);
+  }
+  async connectWeb(user, store, options = {}) {
+    if (this.local || !this.allowed(String(user))) fail(403, "administrator_required");
+    if (!options || typeof options !== "object" || Array.isArray(options))
+      fail(422, "invalid_rclone_parameters");
+    if (!existsSync(this.executable()))
+      fail(
+        503,
+        "rclone_unavailable",
+        "El motor de rclone no está disponible en el servidor. Contacta con su administrador.",
+      );
+    return this.locks.run(`connect:${user}`, async () => {
+      // Coordinate separate Passenger workers without creating duplicate keys.
+      const claim = id();
+      this.state.transaction(() => {
+        const pending = this.state.get("connecting", user);
+        if (pending && pending.until > Date.now() && alive(pending.pid))
+          fail(503, "rclone_starting", "La conexión se está iniciando. Vuelve a intentarlo.");
+        this.state.put("connecting", {
+          id: String(user),
+          claim,
+          pid: process.pid,
+          until: Date.now() + 180000,
+        });
+      });
+      try {
+        const previous = this.configFor(user);
+        const transfers = transferOptions(options, previous);
+        const saved = this.state.get("web-key", user);
+        let credential = saved && this.box.decode(saved.secret, `rclone-web-key:${user}`);
+        let key = credential && store.get("keys", hash(credential.apiKey));
+        if (key && String(key.userId) !== String(user)) fail(403, "rclone_key_owner_mismatch");
+        if (key?.revokedAt || expired(key?.expiresAt)) credential = undefined;
+        if (
+          credential &&
+          key &&
+          previous?.apiKey === credential.apiKey &&
+          previous.apiHost === this.config.publicUrl &&
+          Object.entries(transfers).every(([name, value]) => previous[name] === value)
+        ) {
+          await this.remote(user);
+          return this.info(user);
+        }
+        if (
+          (await this.jobs(user)).some((job) => job.status === "running") ||
+          (await this.mountState(user)).running
+        )
+          fail(
+            409,
+            "rclone_busy",
+            "Detén las transferencias y desmonta la unidad antes de cambiar la conexión.",
+          );
+        if (!credential) {
+          credential = { apiKey: token(), keyId: id(), createdAt: now() };
+          this.state.put("web-key", {
+            id: String(user),
+            secret: this.box.encode(credential, `rclone-web-key:${user}`),
+          });
+          key = undefined;
+        }
+        if (!key)
+          store.put("keys", {
+            id: hash(credential.apiKey),
+            keyId: credential.keyId,
+            userId: String(user),
+            name: "Teldrive web · rclone del servidor",
+            purpose: "rclone-web",
+            createdAt: credential.createdAt,
+          });
+        return await this.configure(
+          user,
+          {
+            ...transfers,
+            apiHost: this.config.publicUrl,
+            apiKey: credential.apiKey,
+          },
+          { verifiedOwner: user },
+        );
+      } finally {
+        this.state.transaction(() => {
+          if (this.state.get("connecting", user)?.claim === claim)
+            this.state.delete("connecting", user);
+        });
+      }
+    });
   }
   saveRuntime(user, remote) {
     this.state.put("runtime", {

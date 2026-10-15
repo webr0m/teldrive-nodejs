@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { apiFetch, fetchClient } from "@/api/client";
 import { userMessage } from "@/api/errors";
 import { t } from "@/lib/localization";
+import { startFileDownload } from "@/features/files/download";
 import { SettingsSection } from "./settings-layout";
 
 type Options = {
@@ -218,10 +219,8 @@ export function RcloneControls({ options }: { options: Options }) {
   };
   return (
     <SettingsSection
-      title={t("Control de rclone")}
-      description={t(
-        "Explora, transfiere y administra una unidad persistente en tu PC o en el servidor.",
-      )}
+      title={t("Teldrive desde el navegador")}
+      description={t("Conecta tu cuenta y administra archivos y transferencias desde esta página.")}
     >
       <div className="space-y-4 p-5">
         <label className="flex flex-wrap items-center gap-3">
@@ -233,14 +232,14 @@ export function RcloneControls({ options }: { options: Options }) {
             disabled={busy}
             onChange={(e) => setTarget(e.target.value as typeof target)}
           >
-            <option value="server">{t("Servidor de Teldrive")}</option>
-            <option value="computer">{t("Mi PC (componente local)")}</option>
+            <option value="server">{t("Web · sin instalar en mi PC")}</option>
+            <option value="computer">{t("Mi PC · componente local opcional")}</option>
           </select>
         </label>
         <p className="text-sm text-muted">
           {target === "server"
             ? t(
-                "Los archivos temporales y la unidad estarán en el servidor. Este control requiere una cuenta administradora.",
+                "La conexión se prepara con tu cuenta. Las operaciones se ejecutan en el servidor y puedes subir y descargar desde el navegador. Requiere una cuenta administradora.",
               )
             : t(
                 "Los archivos y la unidad estarán en tu PC. El componente local debe estar ejecutándose; el navegador puede solicitar acceso a la red local.",
@@ -297,17 +296,20 @@ export function RcloneControls({ options }: { options: Options }) {
         {busy ? <Spinner aria-label={t("Procesando rclone")} /> : null}
         <div className="flex flex-wrap gap-2">
           <Button
-            isDisabled={busy || !options.apiKey || (target === "computer" && !linked)}
+            isDisabled={busy || (target === "computer" && (!options.apiKey || !linked))}
             onPress={() =>
               void action(async () => {
-                await send("rclone.configure", options);
+                if (target === "server") await send("rclone.connect");
+                else await send("rclone.configure", options);
                 await refresh();
                 toast.success(t("Conexión guardada cifrada"));
               })
             }
           >
             {target === "server"
-              ? t("Guardar conexión en el servidor")
+              ? info?.configured
+                ? t("Reconectar mi cuenta")
+                : t("Usar mi cuenta de Teldrive")
               : t("Guardar conexión en mi PC")}
           </Button>
           <Button
@@ -326,7 +328,9 @@ export function RcloneControls({ options }: { options: Options }) {
         {info && !info.available ? (
           <p className="text-sm text-warning">
             {t(
-              "Falta el ejecutable compatible en este equipo. Ejecuta npm run install:rclone o configura su ruta.",
+              target === "server"
+                ? "El motor no está disponible en el servidor. Su administrador debe preparar rclone; no necesitas instalarlo en tu PC."
+                : "Falta el ejecutable compatible en este equipo. Ejecuta npm run install:rclone o configura su ruta.",
             )}
           </p>
         ) : null}
@@ -385,6 +389,23 @@ export function RcloneControls({ options }: { options: Options }) {
               <Button isDisabled={busy} onPress={() => picker.current?.click()}>
                 {t("Subir desde el navegador")}
               </Button>
+              {target === "server" ? (
+                <Button
+                  variant="secondary"
+                  isDisabled={busy || !selected || selected.IsDir}
+                  onPress={() =>
+                    void action(async () => {
+                      const file = await send<{ id: string; name: string }>(
+                        "rclone.browser-download",
+                        { path: selectedPath },
+                      );
+                      startFileDownload(file);
+                    })
+                  }
+                >
+                  {t("Descargar en mi navegador")}
+                </Button>
+              ) : null}
               <Button
                 variant="secondary"
                 isDisabled={busy || !selected || selected.IsDir}
@@ -551,6 +572,13 @@ export function RcloneControls({ options }: { options: Options }) {
         {tab === "mount" ? (
           <div className="space-y-4 rounded-xl border border-border p-4">
             <p className="font-medium">{t("Unidad en {0}", [title])}</p>
+            {target === "server" ? (
+              <p className="text-sm text-muted">
+                {t(
+                  "Este montaje corresponde al servidor. Para usar Teldrive en esta página no necesitas montar una unidad. Una unidad en el Explorador de tu PC requiere el componente local opcional.",
+                )}
+              </p>
+            ) : null}
             <p role="status" className="text-sm">
               {mount?.running ? t("Unidad montada") : t("Unidad desmontada")}
             </p>
