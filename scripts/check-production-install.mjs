@@ -8,6 +8,7 @@ try{
   const pkg=JSON.parse(await readFile('package.json','utf8'));delete pkg.devDependencies;
   await writeFile(path.join(directory,'package.json'),JSON.stringify(pkg));
   await cp('src',path.join(directory,'src'),{recursive:true});
+  await cp('edge',path.join(directory,'edge'),{recursive:true});
   await cp('packages/rclone-teldrive',path.join(directory,'packages/rclone-teldrive'),{recursive:true,filter:source=>!source.split(path.sep).includes('node_modules')});
   await run(process.platform==='win32'?'npm.cmd':'npm',['install','--omit=dev','--ignore-scripts','--package-lock=false','--no-audit','--no-fund']);
   await run(process.execPath,['--input-type=module','-e',"await import('./src/server.mjs'); console.log('Standalone npm production imports passed')"]);
