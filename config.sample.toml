@@ -45,6 +45,7 @@ job-lease-seconds = 300
 job-batch-limit = 1000
 pending-retention-days = 30
 static-cache-bytes = 16777216
+static-asset-max-age = 3600
 playback-ttl-minutes = 60
 media-concurrency = 1
 media-threads = 1

@@ -26,6 +26,7 @@ import { gateway } from './gateway.mjs';
 import { PostgresStore } from './postgres.mjs';
 import { SupabaseStore } from './supabase.mjs';
 import { AssetCache } from './assets.mjs';
+import { staticCacheControl } from './static-assets.mjs';
 import packageInfo from '../package.json' with { type: 'json' };
 
 const publicDir = fileURLToPath(new URL('../public/', import.meta.url));
@@ -393,7 +394,9 @@ export function createApp(config, overrides = {}) {
       res.setHeader('Content-Security-Policy', `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; img-src 'self' blob: data:; media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self' ${config.rcloneAgentOrigin}; base-uri 'none'; form-action 'self'; ${config.allowIframe ? '' : "frame-ancestors 'self';"}`);
       const asset = await assets.read(filename);
       res.setHeader('ETag', asset.etag);
-      if (url.pathname.startsWith('/assets/') && /-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$/i.test(filename)) res.setHeader('Cache-Control','public, max-age=31536000, immutable');
+      // A demo login can set cookies even on an interface resource; never cache
+      // that response. HTML and authenticated routes keep the default no-store.
+      if (!res.hasHeader('Set-Cookie')) res.setHeader('Cache-Control', staticCacheControl(filename, config));
       if (req.headers['if-none-match'] === asset.etag) { res.statusCode = 304; res.end(); return; }
       res.setHeader('Content-Length', asset.bytes.length); res.end(req.method === 'HEAD' ? undefined : asset.bytes);
     } catch (error) {

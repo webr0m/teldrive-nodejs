@@ -73,11 +73,18 @@ test('hashed interface assets can be cached and revalidated while HTML and API r
   const dir=await mkdtemp(path.join(os.tmpdir(),'td-static-'));let app;
   try{
     const {mkdir}=await import('node:fs/promises');await mkdir(path.join(dir,'assets'));await writeFile(path.join(dir,'index.html'),'<html>test</html>');await writeFile(path.join(dir,'assets','demo-AbCdEfG1.js'),'console.log(1)');
-    const config=readConfig({CONFIG_FILE:'none',DATA_KEY:randomBytes(32).toString('base64'),DATA_DIR:path.join(dir,'data'),STATIC_DIR:dir,STORAGE_BACKEND:'local',DEMO_AUTH:'true',PORT:'0'});
+    const config=readConfig({CONFIG_FILE:'none',DATA_KEY:randomBytes(32).toString('base64'),DATA_DIR:path.join(dir,'data'),STATIC_DIR:dir,STORAGE_BACKEND:'local',PORT:'0'});
     app=createApp(config);await new Promise(resolve=>app.server.listen(0,'127.0.0.1',resolve));const base=`http://127.0.0.1:${app.server.address().port}`;
     const first=await fetch(base+'/assets/demo-AbCdEfG1.js');assert.equal(first.headers.get('cache-control'),'public, max-age=31536000, immutable');assert.equal(await first.text(),'console.log(1)');
     const cached=await fetch(base+'/assets/demo-AbCdEfG1.js',{headers:{'If-None-Match':first.headers.get('etag')}});assert.equal(cached.status,304);assert.equal(await cached.text(),'');
     assert.equal((await fetch(base+'/files')).headers.get('cache-control'),'no-store');assert.equal((await fetch(base+'/api/config')).headers.get('cache-control'),'no-store');
+    await mkdir(path.join(dir,'fonts'));await writeFile(path.join(dir,'fonts','geist.woff2'),'font');
+    const font=await fetch(base+'/fonts/geist.woff2');assert.equal(font.headers.get('cache-control'),'public, max-age=3600, must-revalidate');await font.arrayBuffer();
+    assert.equal((await fetch(base+'/fonts/missing.woff2')).headers.get('cache-control'),'no-store');
+    assert.equal((await fetch(base+'/assets/fallback/')).headers.get('cache-control'),'no-store');
+    assert.equal((await fetch(base+'/api/v1/me')).headers.get('cache-control'),'no-store');
+    config.demo=true;
+    const demo=await fetch(base+'/assets/demo-AbCdEfG1.js');assert.ok(demo.headers.get('set-cookie'));assert.equal(demo.headers.get('cache-control'),'no-store');await demo.arrayBuffer();
   }finally{if(app)await app.close();await rm(dir,{recursive:true,force:true});}
 });
 

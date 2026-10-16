@@ -23,6 +23,7 @@ export const mappings = {
   'node.limits.login-rate-per-minute': 'LOGIN_RATE_PER_MINUTE',
   'node.limits.json-max-bytes': 'JSON_MAX_BYTES',
   'node.limits.static-cache-bytes': 'STATIC_CACHE_BYTES',
+  'node.limits.static-asset-max-age': 'STATIC_ASSET_MAX_AGE',
   'node.limits.job-poll-seconds': 'JOB_POLL_SECONDS', 'node.limits.job-lease-seconds': 'JOB_LEASE_SECONDS', 'node.limits.job-batch-limit': 'JOB_BATCH_LIMIT', 'node.limits.pending-retention-days': 'PENDING_RETENTION_DAYS',
   'http.public-url': 'PUBLIC_URL',
   'database.url': 'DATABASE_URL', 'database.schema': 'DATABASE_SCHEMA',

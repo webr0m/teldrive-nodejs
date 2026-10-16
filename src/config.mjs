@@ -23,6 +23,7 @@ export function config(env = process.env, { skipManaged = false } = {}) {
     backend: env.STORAGE_BACKEND || 'telegram', dataDir: path.resolve(env.DATA_DIR || './var'),
     staticDir: path.resolve(env.STATIC_DIR || './ui/dist'),
     staticCacheBytes: integer('STATIC_CACHE_BYTES', 16777216, 0, 67108864),
+    staticAssetMaxAge: integer('STATIC_ASSET_MAX_AGE', 3600, 0, 604800),
     key: Buffer.from(env.DATA_KEY || '', 'base64'), demo: env.DEMO_AUTH === 'true',
     apiId: Number(env.TELEGRAM_API_ID), apiHash: env.TELEGRAM_API_HASH,
     telegramInstanceId: env.TELEGRAM_INSTANCE_ID,
