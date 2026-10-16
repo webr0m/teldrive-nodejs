@@ -27,6 +27,8 @@ export function config(env = process.env, { skipManaged = false } = {}) {
     key: Buffer.from(env.DATA_KEY || '', 'base64'), demo: env.DEMO_AUTH === 'true',
     apiId: Number(env.TELEGRAM_API_ID), apiHash: env.TELEGRAM_API_HASH,
     telegramInstanceId: env.TELEGRAM_INSTANCE_ID,
+    mediaNode: env.MEDIA_NODE === 'true', mediaNodeSecret: env.MEDIA_NODE_SECRET || '',
+    mediaNodeAdmin: env.MEDIA_NODE_ADMIN === 'true', mediaNodePrimaryOrigin: env.MEDIA_NODE_PRIMARY_ORIGIN || '',
     downloadBots: integer('DOWNLOAD_BOTS', 20, 0, 200), botAttempts: integer('BOT_ATTEMPTS', 2, 1, 20),
     botRetrySeconds: integer('BOT_RETRY_SECONDS', 60, 1, 86400),
     botClientPoolSize: integer('BOT_CLIENT_POOL_SIZE', 2, 0, 64), botClientIdleSeconds: integer('BOT_CLIENT_IDLE_SECONDS', 30, 1, 600),
@@ -73,6 +75,11 @@ export function config(env = process.env, { skipManaged = false } = {}) {
     jsonMaxBytes: integer('JSON_MAX_BYTES', 1048576, 4096, 16777216),
   };
   if (!['native', 'gateway'].includes(c.mode)) throw new Error('MODE must be native or gateway');
+  if (c.mediaNode && (c.mode !== 'native' || c.backend !== 'telegram' || !['127.0.0.1', '::1', 'localhost'].includes(c.host) || !c.telegramInstanceId || !/^[A-Za-z0-9_-]{43,128}$/.test(c.mediaNodeSecret) || (!c.databaseUrl && !c.supabaseUrl))) throw new Error('A media node requires loopback binding, Telegram storage, a shared database, TELEGRAM_INSTANCE_ID and a random MEDIA_NODE_SECRET');
+  if (c.mediaNodeAdmin) {
+    const primary = new URL(c.mediaNodePrimaryOrigin);
+    if (!c.mediaNode || primary.protocol !== 'https:' || primary.origin !== c.mediaNodePrimaryOrigin || primary.origin === c.publicUrl || !c.ownerUserId) throw new Error('Media node administration requires a pinned owner and a distinct HTTPS primary origin');
+  }
   if (!!c.googleClientId !== !!c.googleClientSecret) throw new Error('Configure both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET');
   for (const value of [c.mobileAdsUrl, c.mobilePrivacyUrl, c.mobileSupportUrl].filter(Boolean)) {
     const url = new URL(value);

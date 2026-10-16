@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { createReadStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
+import { guardMediaNode, mediaNodeHealth, mediaNodeLocalRoute } from './media-node.mjs';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -321,6 +322,7 @@ function send(res, r) {
 }
 export function createApp(config, overrides = {}) {
   const limits = new Map(), assets = new AssetCache(config), proxy = config.mode === 'gateway' ? gateway(config) : null;
+  const mediaPrimary = config.mediaNodeAdmin ? gateway({ upstream: config.mediaNodePrimaryOrigin, publicUrl: config.publicUrl, rewriteOrigin: true }) : undefined;
   let context;
   if (!proxy) {
     const store = overrides.store || (config.databaseTransport === 'supabase' ? new SupabaseStore(config) : config.databaseUrl ? new PostgresStore(config) : new Store(config.dataDir)), catalog = new Catalog(store), telegram = overrides.telegram || new Telegram(store, config);
@@ -328,23 +330,27 @@ export function createApp(config, overrides = {}) {
     const access = new Access(store, catalog); uploads.access = access;
     context = { store, catalog, telegram, auth, storage, uploads, shares, settings, serverConfiguration: new ServerConfiguration(config), config, access, playback: new Playback(store, catalog, shares, config) };
     context.playback.access = access;
-    context.jobs = new Jobs(store, uploads, config); context.jobs.start();
-    context.rclone = new Rclone(config, { allowed: user => { const account = store.get('users', user); return !!account && !account.disabled && ['owner','admin'].includes(account.role); } }); context.rclone.start();
+    context.jobs = new Jobs(store, uploads, config); if (!config.mediaNode) context.jobs.start();
+    context.rclone = new Rclone(config, { allowed: user => { const account = store.get('users', user); return !!account && !account.disabled && ['owner','admin'].includes(account.role); } }); if (!config.mediaNode) context.rclone.start();
     context.media = new Media(config, context.playback); context.playback.media = context.media;
     context.mobile = new Mobile(config, auth, overrides.mobile);
   }
-  const cleanupTimer = context ? setInterval(() => { void context.uploads.drainCleanup().catch(() => {}); context.mobile.prune(); }, 60000).unref() : undefined;
+  const cleanupTimer = context && !config.mediaNode ? setInterval(() => { void context.uploads.drainCleanup().catch(() => {}); context.mobile.prune(); }, 60000).unref() : undefined;
   const server = http.createServer(async (req, res) => {
     const requestId = id(); res.setHeader('X-Request-Id', requestId); res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('Cache-Control', 'no-store');
     if (!config.allowIframe) res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     try {
       if (!req.url.startsWith('/') || req.url.startsWith('//')) fail(400, 'invalid_path');
       const url = new URL(req.url, config.publicUrl), origin = req.headers.origin;
+      guardMediaNode(config, req, url.pathname);
+      if (config.mediaNode && url.pathname === '/internal/media/health') { const health = mediaNodeHealth(context); send(res, result(health, health.status === 'ok' ? 200 : 503)); return; }
       const mobileOrigin = ['capacitor://localhost', 'http://localhost', 'https://localhost'].includes(origin);
       if (origin && origin !== config.publicUrl && !config.cors.includes(origin) && !mobileOrigin) fail(403, 'origin_not_allowed');
       if (origin && (config.cors.includes(origin) || mobileOrigin)) { res.setHeader('Access-Control-Allow-Origin', origin); res.setHeader('Vary', 'Origin'); res.setHeader('Access-Control-Allow-Credentials', 'true'); res.setHeader('Access-Control-Expose-Headers', 'ETag,Content-Range,Accept-Ranges,Location'); }
       if (req.method === 'OPTIONS') { res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS'); res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Api-Key,X-Share-Password,X-Part-Checksum,Idempotency-Key,If-Match,Range,X-Teldrive-Client'); res.writeHead(204); res.end(); return; }
       if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && req.headers['sec-fetch-site'] === 'cross-site' && !config.cors.includes(origin) && !(mobileOrigin && req.headers['x-teldrive-client'] === 'mobile')) fail(403, 'cross_site_request');
+      if (mediaPrimary && !mediaNodeLocalRoute(req.method, url.pathname)) { mediaPrimary.request(req, res); return; }
+      if (mediaPrimary && req.headers['x-teldrive-pc-portal'] === '1' && url.pathname.startsWith('/api/v1/playback') && context.store.get('tickets', hash(url.searchParams.get('ticket') || ''))?.shareId) { mediaPrimary.request(req, res); return; }
       if (url.pathname === '/healthz') { send(res, result({ status: 'ok', mode: config.mode })); return; }
       if (proxy) { proxy.request(req, res); return; }
       const ip = req.socket.remoteAddress, bucket = Math.floor(Date.now() / 60000), login = (url.pathname.includes('/auth/') && !url.pathname.endsWith('/qr/poll') && !url.pathname.endsWith('/refresh')) || /^\/api\/v1\/mobile\/google\/(start|authorize|callback)$/.test(url.pathname) || url.pathname.startsWith('/api/dev/');

@@ -12,7 +12,14 @@ function headers(source) {
 export function gateway(config) {
   const origin = new URL(config.upstream), transport = origin.protocol === 'https:' ? https : http;
   const publicOrigin = new URL(config.publicUrl);
-  const requestOptions = req => ({ protocol: origin.protocol, hostname: origin.hostname, port: origin.port || undefined, method: req.method, path: req.url, headers: { ...headers(req.headers), host: origin.host, 'x-forwarded-host': publicOrigin.host, 'x-forwarded-proto': publicOrigin.protocol.slice(0, -1), 'x-forwarded-for': req.socket.remoteAddress } });
+  const requestOptions = req => {
+    const forwarded = headers(req.headers);
+    delete forwarded['x-teldrive-media-node'];
+    delete forwarded['x-teldrive-pc-portal'];
+    // Used only after the secondary validates its public browser Origin.
+    if (config.rewriteOrigin && forwarded.origin) forwarded.origin = origin.origin;
+    return { protocol: origin.protocol, hostname: origin.hostname, port: origin.port || undefined, method: req.method, path: req.url, headers: { ...forwarded, host: origin.host, 'x-forwarded-host': publicOrigin.host, 'x-forwarded-proto': publicOrigin.protocol.slice(0, -1), 'x-forwarded-for': req.socket.remoteAddress } };
+  };
   return {
     request(req, res) {
       if (!req.url.startsWith('/') || req.url.startsWith('//')) fail(400, 'invalid_path');

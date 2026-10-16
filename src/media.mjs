@@ -21,8 +21,8 @@ export class Media {
     this.transfers = new Semaphore(config.mediaConcurrency ?? 1); this.cache = new Map(); this.probes = new Map();
   }
   available() { return this.config.mediaEnabled === true && !!this.ffmpeg && existsSync(this.ffmpeg); }
-  source(ticket) { const url = new URL('/api/v1/playback', this.config.publicUrl); url.search = new URLSearchParams({ ticket, mode: 'original' }).toString(); return url.href; }
-  inputOptions() { return [...inputOptions,...(this.config.publicUrl.startsWith('https:') ? ['-tls_verify','1','-ca_file',this.caFile] : [])]; }
+  source(ticket) { const origin = this.config.mediaNode ? `http://${this.config.host === '::1' ? '[::1]' : '127.0.0.1'}:${this.config.port}` : this.config.publicUrl; const url = new URL('/api/v1/playback', origin); url.search = new URLSearchParams({ ticket, mode: 'original' }).toString(); return url.href; }
+  inputOptions() { return [...inputOptions,...(this.config.mediaNode ? ['-headers', `X-Teldrive-Media-Node: ${this.config.mediaNodeSecret}\r\n`] : this.config.publicUrl.startsWith('https:') ? ['-tls_verify','1','-ca_file',this.caFile] : [])]; }
   async tracks(ticket) {
     const { file } = this.playback.resolve(ticket), key = `${file.id}:${file.generation}`;
     if (!this.config.mediaEnabled || !this.ffprobe || !existsSync(this.ffprobe)) return { available: false, tracks: [] };

@@ -28,6 +28,9 @@ export class Telegram {
     return client;
   }
   async withClient(userId, fn) {
+    // Secondary media servers authenticate their own bots. Never open the
+    // primary server's personal MTProto key from a second machine.
+    if (this.config.mediaNode) fail(503, 'media_node_requires_bot');
     return this.locks.run(`client:${userId}`, async () => {
       const user = this.store.get('users', userId);
       if (!user?.telegramSession) fail(401, 'telegram_login_required');

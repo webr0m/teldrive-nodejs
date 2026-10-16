@@ -34,6 +34,8 @@ export const mappings = {
   'node.limits.bot-client-pool-size': 'BOT_CLIENT_POOL_SIZE', 'node.limits.bot-client-idle-seconds': 'BOT_CLIENT_IDLE_SECONDS', 'node.limits.upload-retry-attempts': 'UPLOAD_RETRY_ATTEMPTS',
   'node.limits.playback-ttl-minutes': 'PLAYBACK_TTL_MINUTES',
   'node.telegram-instance-id': 'TELEGRAM_INSTANCE_ID',
+  'node.media-node.enabled': 'MEDIA_NODE', 'node.media-node.secret': 'MEDIA_NODE_SECRET',
+  'node.media-node.administration': 'MEDIA_NODE_ADMIN', 'node.media-node.primary-origin': 'MEDIA_NODE_PRIMARY_ORIGIN',
   'media.enabled': 'MEDIA_ENABLED', 'media.ffmpeg-path': 'FFMPEG_PATH', 'media.ffprobe-path': 'FFPROBE_PATH', 'media.max-concurrent': 'MEDIA_CONCURRENCY',
   'media.ca-file': 'MEDIA_CA_FILE',
   'node.limits.media-concurrency': 'MEDIA_CONCURRENCY', 'node.limits.media-threads': 'MEDIA_THREADS', 'node.limits.media-max-width': 'MEDIA_MAX_WIDTH',

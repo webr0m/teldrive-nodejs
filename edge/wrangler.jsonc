@@ -1,0 +1,25 @@
+{
+  "name": "teldrive-media-balancer",
+  "main": "media-balancer.mjs",
+  "compatibility_date": "2026-10-16",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [
+    { "pattern": "cloud.webrom.lat/api/v1/playback*", "zone_name": "webrom.lat" },
+    { "pattern": "cloud.webrom.lat/api/v1/files/*", "zone_name": "webrom.lat" }
+    // Optional owner administration portal: add a Custom Domain for
+    // cloud-pc.webrom.lat after enabling MEDIA_NODE_ADMIN on both ends.
+  ],
+  "vars": {
+    "PUBLIC_ORIGIN": "https://cloud.webrom.lat",
+    "MEDIA_NODE_ENABLED": "false",
+    "MEDIA_NODE_ADMIN": "false",
+    "MEDIA_NODE_ORIGIN": "https://cloud-pc-origin.webrom.lat",
+    "MEDIA_NODE_PORTAL_ORIGIN": "https://cloud-pc.webrom.lat",
+    "MEDIA_NODE_WEIGHT": "1",
+    "HEALTH_TTL_MS": "15000",
+    "HEALTH_TIMEOUT_MS": "2500",
+    "MEDIA_HEADER_TIMEOUT_MS": "15000"
+  },
+  "observability": { "enabled": false }
+}

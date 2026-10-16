@@ -51,6 +51,8 @@ En una migración conserva la base, `DATA_KEY`, el antiguo `encryption-key` y lo
 
 Para desplegar detrás de Cloudflare, consulta [la política de caché y optimización del hosting](docs/CDN.md). El TTL de fuentes, imágenes y recursos PDF se configura con `STATIC_ASSET_MAX_AGE` o `[node.limits] static-asset-max-age`; las respuestas de sesión y archivos de usuarios conservan `no-store`.
 
+Para añadir un PC como nodo de medios con balanceo y administración del propietario, consulta [el despliegue híbrido](docs/HYBRID.md). El secundario utiliza claves propias de bots y mantiene las operaciones personales de Telegram en el principal.
+
 La aplicación funciona directamente en el navegador. Para integrar su API autoriza orígenes exactos con `CORS_ORIGINS` y crea una clave desde Administración. Una clave de usuario da acceso a toda su unidad: úsala en el servidor de tu otra aplicación; no la publiques en JavaScript enviado a visitantes.
 
 ```js

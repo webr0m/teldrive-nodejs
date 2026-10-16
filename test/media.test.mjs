@@ -48,6 +48,18 @@ test('real media probe and conversion select video and audio streams through aut
     const blocked=app.context.catalog.create('1',{name:'blocked.m3u8'},'file',{size:bytes.length,parts:[{...stored,partNo:1}]});
     const blockedGrant=app.context.playback.create(blocked);
     await assert.rejects(()=>app.context.media.tracks(blockedGrant.ticket),{code:'media_probe_failed'}); assert.equal(nestedRequests,0,'uploaded playlists cannot fetch another URL');
+    // A secondary must feed FFmpeg through its protected loopback listener,
+    // without sending its internal secret to the public origin.
+    const localOrigin = c.publicUrl;
+    c.mediaNode = true; c.mediaNodeSecret = randomBytes(32).toString('base64url'); c.port = app.server.address().port;
+    c.publicUrl = 'https://unreachable.example.invalid'; app.context.media.cache.clear();
+    const nodeHeaders = { 'X-Teldrive-Media-Node': c.mediaNodeSecret };
+    const localTracks = await fetch(`${localOrigin}/api/v1/playback/tracks?ticket=${grant.ticket}`, { headers: nodeHeaders });
+    assert.equal(localTracks.status, 200); assert.equal((await localTracks.json()).tracks.length, 4);
+    const localVideo = await fetch(`${localOrigin}/api/v1/playback?ticket=${grant.ticket}&mode=video`, { headers: nodeHeaders });
+    assert.equal(localVideo.status, 200); assert.ok((await localVideo.arrayBuffer()).byteLength > 100);
+    const publicGrant = app.context.playback.create(file, undefined, { id: 'counter-on-primary' });
+    assert.throws(() => app.context.playback.resolve(publicGrant.ticket), { code: 'media_node_share_pinned' });
   } finally { if(app) await app.close(); await rm(directory,{recursive:true,force:true}); }
 });
 

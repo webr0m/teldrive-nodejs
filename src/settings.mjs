@@ -40,7 +40,10 @@ export class Settings {
   constructor(store, config, uploads) {
     this.store = store; this.config = config; this.uploads = uploads;
     this.defaults = Object.fromEntries(Object.keys(limitDefinitions).map(k => [k, config[k]]));
-    const saved = store.get('settings', 'limits');
+    // The secondary has its own hardware profile; do not replace its limits
+    // with those saved for the shared-hosting primary.
+    this.recordId = config.mediaNode ? `limits:${config.telegramInstanceId}` : 'limits';
+    const saved = store.get('settings', this.recordId);
     if (saved) this.apply(saved.values);
   }
   read() { return { values: Object.fromEntries(Object.keys(limitDefinitions).map(k => [k, this.config[k]])), definitions: limitDefinitions, defaults: this.defaults }; }
@@ -56,7 +59,7 @@ export class Settings {
     if (!values || typeof values !== 'object' || Array.isArray(values)) fail(422, 'invalid_settings');
     // Validate all entries before mutating live configuration.
     this.apply(values);
-    this.store.put('settings', { id: 'limits', values: this.read().values, updatedAt: now(), updatedBy: user.id });
+    this.store.put('settings', { id: this.recordId, values: this.read().values, updatedAt: now(), updatedBy: user.id });
     return this.read();
   }
 }

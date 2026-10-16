@@ -23,6 +23,9 @@ export class Playback {
     }
     let share;
     if (grant.shareId) {
+      // Download limits and counters remain on the primary until they have
+      // distributed compare-and-swap semantics.
+      if (this.config.mediaNode) fail(503, 'media_node_share_pinned');
       share = this.shares.get(grant.userId, grant.shareId);
       if (share.revokedAt || expired(share.expiresAt) || share.passwordHash !== grant.sharePasswordHash || (!grant.downloadCounted && share.maxDownloads !== undefined && share.downloadCount >= share.maxDownloads)) fail(401, 'invalid_ticket');
       return { grant, share, file: this.shares.file(share, grant.fileId) };
