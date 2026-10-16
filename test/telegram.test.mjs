@@ -38,6 +38,25 @@ test('choosing download bots does not issue one HTTPS database request per bot',
   for(let n=4;n<104;n++)store.put('bots',{id:String(n),ownerId:'7',enabled:true});
   assert.equal(t.eligibleBots('7','download').length,2);assert.equal(reads,0);
 });
+
+test('bot labels recover Telegram names without changing shared credentials and survive an offline server', async () => {
+  const {store,telegram:t}=fixture(); t.config.backend='telegram';store.transaction=fn=>fn();
+  let lookups=0;
+  t.withClient=async (owner,fn)=>{assert.equal(owner,'7');lookups++;return fn({invoke:async request=>{
+    assert.ok(request instanceof Api.bots.GetAdminedBots);
+    return [{id:1,firstName:'Unidad',lastName:'Principal',username:'drive_bot'},{id:2,firstName:'Respaldo',username:'backup_bot'},{id:3,firstName:'Otra cuenta',username:'foreign_bot'}];
+  }});};
+  const result=await t.botSummaries('7');
+  assert.equal(result[0].name,'Unidad Principal');assert.equal(result[0].username,'drive_bot');assert.equal(result[0].id,1);
+  assert.equal(store.get('bots','1').tokenCiphertext,'private');assert.equal(store.get('bot-state','bot-profile:3'),undefined);
+  assert.equal(JSON.stringify(result).includes('private'),false);
+  t.withClient=async()=>{throw new Error('offline')};
+  const restarted=new Telegram(store,t.config);restarted.withClient=t.withClient;
+  assert.deepEqual(await restarted.botSummaries('7'),result);assert.equal(lookups,1);
+  const other=await restarted.botSummaries('8');assert.equal(other[0].id,3);assert.equal(other[0].name,undefined);
+  store.put('bot-state',{id:'bot-profile:3',kind:'bot-profile',botId:'3',ownerId:'7',name:'Wrong owner',username:'wrong_bot'});
+  assert.equal(restarted.botSummary(store.get('bots','3')).name,undefined);
+});
 test('channel resolution works for bots without GetDialogs', async () => {
   const { telegram: t } = fixture(); let called;
   const channel = new Api.Channel({ id: 99, accessHash: 123, title: 'Storage', date: 0 });

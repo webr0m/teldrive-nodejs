@@ -7374,6 +7374,9 @@ components:
         - enabled
         - createdAt
       properties:
+        name:
+          type: string
+          description: Telegram display name, when available.
         id:
           type: integer
           format: int64

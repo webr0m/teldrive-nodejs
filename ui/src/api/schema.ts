@@ -2033,6 +2033,8 @@ export interface components {
             message?: string;
         };
         BotSummary: {
+            /** @description Telegram display name, when available. */
+            name?: string;
             /** Format: int64 */
             id: number;
             username?: string;

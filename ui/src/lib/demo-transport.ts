@@ -154,7 +154,7 @@ export async function demoRequest(request: Request): Promise<Response> {
   if (path === "/v1/bots/manager" && method === "GET") return json({ configured: false, supported: false, pending: [] });
   if (path === "/v1/bots" && method === "GET")
     return json({
-      items: [{ id: 1000003, username: "bot_de_ejemplo", enabled: true, createdAt: now() }],
+        items: [{ id: 1000003, name: "Bot de demostración", username: "bot_de_ejemplo", enabled: true, createdAt: now() }],
     });
   if (path === "/v1/sessions" && method === "GET")
     return json({

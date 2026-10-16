@@ -62,6 +62,7 @@ export class ManagedBots {
     await this.telegram.withBot(bot, async client => {
       const identity = await client.getMe();
       if (String(identity.id) !== bot.id || !identity.botCanManageBots) fail(422, 'bot_manager_mode_required', 'Activa Bot Management Mode para el administrador en BotFather.');
+      this.telegram.botProfile(bot, identity);
     });
   }
   async checkUsername(userId, value) {
@@ -113,7 +114,7 @@ export class ManagedBots {
         // leaking its token or disguising a partial setup as a failed creation.
         let message;
         try { managedBotError(error); } catch (safe) { message = safe.message; }
-        return { bot: { id: Number(created.id), username: checked, enabled: false, createdAt: now() }, channelId, setupPending: true,
+        return { bot: { id: Number(created.id), name: created.firstName || displayName, username: checked, enabled: false, createdAt: now() }, channelId, setupPending: true,
           message: `${message} El bot ya existe en Telegram. Reintenta con el mismo usuario para completar su configuración.` };
       }
     });

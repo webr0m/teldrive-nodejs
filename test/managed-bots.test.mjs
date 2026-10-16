@@ -108,6 +108,12 @@ test('HTTP bot management supports client sessions, rejects foreign managers and
     assert.equal(first.status, 201); const firstBody = await first.text(); assert.equal(firstBody.includes(f.token), false);
     const replay = await fetch(base + '/managed', { method: 'POST', headers: idempotent, body });
     assert.equal(replay.status, 201); assert.equal(await replay.text(), firstBody); assert.equal(f.count(), 1);
+    const listed = await (await fetch(base, { headers: headers(own) })).json();
+    assert.deepEqual(listed.items.map(({ id, name, username }) => ({ id, name, username })), [
+      { id: 10001, name: 'Administrador de archivos', username: 'manager_bot' },
+      { id: 10002, name: f.input.name, username: f.input.username },
+    ]);
+    assert.equal(JSON.stringify(listed).includes(f.token), false);
     const otherRead = await (await fetch(base + '/manager', { headers: headers(other) })).json();
     assert.equal(otherRead.configured, false); assert.equal(otherRead.pending.length, 0);
     const rejected = await fetch(base + '/managed', { method: 'POST', headers: headers(other), body }); assert.equal(rejected.status, 404);

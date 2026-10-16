@@ -8,6 +8,7 @@ import type { components } from "@/api/schema";
 import { SettingsSection } from "@/components/settings-layout";
 import { newIdempotencyKey } from "@/features/shared/idempotency";
 import { t } from "@/lib/localization";
+import { botLabel } from "@/lib/bot-identity";
 
 const selectClass =
   "w-full min-w-0 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground";
@@ -63,9 +64,9 @@ export function ManagedBotsSettings({
           </p>
         )}
         <details open={!manager.data?.configured} className="rounded-lg border border-border p-3">
-          <summary className="cursor-pointer text-sm font-medium">
+          <summary className="cursor-pointer break-words text-sm font-medium">
             {manager.data?.bot
-              ? `${t("Bot administrador")}: @${manager.data.bot.username}`
+              ? `${t("Bot administrador")}: ${botLabel(bots.find((bot) => bot.id === manager.data?.bot?.id) || manager.data.bot)}`
               : t("Configurar bot administrador")}
           </summary>
           <div className="mt-3 space-y-3 text-sm">
@@ -96,7 +97,7 @@ export function ManagedBotsSettings({
                   .filter((bot) => bot.enabled)
                   .map((bot) => (
                     <option key={bot.id} value={String(bot.id)}>
-                      @{bot.username}
+                      {botLabel(bot)}
                     </option>
                   ))}
               </select>
@@ -156,7 +157,7 @@ export function ManagedBotsSettings({
                 key={bot.botId}
                 className="flex min-w-0 flex-wrap items-center justify-between gap-2"
               >
-                <span className="break-all text-sm">@{bot.username}</span>
+                <span className="break-all text-sm">{botLabel({ ...bot, id: bot.botId })}</span>
                 <Button
                   size="sm"
                   variant="secondary"
@@ -199,7 +200,7 @@ export function ManagedBotsSettings({
               else {
                 toast.success(t("Bot creado y listo para transferencias"));
                 setFeedback({
-                  message: `@${result.bot.username} · ${t("Bot configurado en el canal elegido")}`,
+                  message: `${botLabel(result.bot)} · ${t("Bot configurado en el canal elegido")}`,
                 });
                 setName("");
                 setUsername("");

@@ -190,7 +190,7 @@ route('GET', '/api/v1/uploads/:uploadId/parts', c => { const u = c.uploads.get(c
 route('PUT', '/api/v1/uploads/:uploadId/parts/:partNo', async c => { const r = await c.uploads.putPart(c.user.id, c.params.uploadId, Number(c.params.partNo), c.req); return result(r.part, r.status); }, { raw: true });
 route('POST', '/api/v1/uploads/:uploadId/complete', async c => { const r = await c.uploads.complete(c.user.id, c.params.uploadId); return metadata(c, r.file, r.status); });
 route('DELETE', '/api/v1/uploads/:uploadId', async c => { await c.uploads.abort(c.user.id, c.params.uploadId); return empty(); });
-route('GET', '/api/v1/bots', c => result(page(c.store.list('bots', c.user.id).map(bot => c.telegram.botSummary(bot)), c.query)));
+route('GET', '/api/v1/bots', async c => result(page(await c.telegram.botSummaries(c.user.id), c.query)));
 route('POST', '/api/v1/bots', async c => { if (c.config.backend !== 'telegram') fail(503, 'telegram_not_configured'); return result(await c.telegram.addBots(c.user.id, c.body.tokens)); });
 route('GET', '/api/v1/bots/manager', c => result({ ...c.managedBots.read(c.user.id), supported: c.config.backend === 'telegram' }));
 route('POST', '/api/v1/bots/manager', async c => { if (c.config.backend !== 'telegram') fail(503, 'telegram_not_configured'); return result(await c.managedBots.select(c.user.id, c.body.botId)); });

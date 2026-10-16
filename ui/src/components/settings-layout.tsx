@@ -67,9 +67,9 @@ export function SettingsRow({
       }`}
     >
       <div className="min-w-0">
-        <p className="text-sm font-medium text-foreground">{label}</p>
+        <p className="break-words text-sm font-medium text-foreground">{label}</p>
         {description ? (
-          <p className="mt-1 text-xs leading-relaxed text-muted">{description}</p>
+          <p className="mt-1 break-words text-xs leading-relaxed text-muted">{description}</p>
         ) : null}
       </div>
       <div className="min-w-0 md:justify-self-stretch">{children}</div>

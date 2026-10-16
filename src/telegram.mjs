@@ -20,7 +20,7 @@ export function telegramError(error) {
 export class Telegram {
   constructor(store, config) {
     this.store = store; this.config = config; this.box = new CryptoBox(config.key); this.secureBlob = new SecureBlob(config.key);
-    this.locks = new Locks(); this.rotation = new Map(); this.botClients = new Map(); this.clients = new Set(); this.busyBots = new Set();
+    this.locks = new Locks(); this.rotation = new Map(); this.botClients = new Map(); this.clients = new Set(); this.busyBots = new Set(); this.botProfileChecks = new Map();
   }
   make(session = '') {
     const client = new TelegramClient(new StringSession(session), this.config.apiId, this.config.apiHash, { connectionRetries: 3, requestRetries: 3, floodSleepThreshold: 0, useWSS: true });
@@ -40,7 +40,40 @@ export class Telegram {
       finally { await client.disconnect(); }
     });
   }
-  botSummary(bot) { return { id: Number(bot.id), username: bot.username, enabled: bot.enabled, createdAt: bot.createdAt }; }
+  botProfile(bot, identity) {
+    if (String(identity.id) !== String(bot.id)) fail(503, 'bot_identity_mismatch');
+    const name = [identity.firstName, identity.lastName].filter(Boolean).join(' ').trim();
+    const profile = { id: `bot-profile:${bot.id}`, kind: 'bot-profile', botId: String(bot.id), ownerId: bot.ownerId, name, username: identity.username?.trim().replace(/^@+/, '') || undefined, updatedAt: now() };
+    this.store.put('bot-state', profile); return profile;
+  }
+  botSummary(bot, profile = this.store.get('bot-state', `bot-profile:${bot.id}`)) {
+    if (profile?.ownerId !== bot.ownerId) profile = undefined;
+    const name = profile?.name || bot.name;
+    return { id: Number(bot.id), ...(name ? { name } : {}), username: (profile?.username || bot.username)?.trim().replace(/^@+/, '') || undefined, enabled: bot.enabled, createdAt: bot.createdAt };
+  }
+  async botSummaries(userId) {
+    return this.locks.run(`bot-profiles:${userId}`, async () => {
+      const bots = this.store.list('bots', userId);
+      if (!bots.length) return [];
+      const profiles = new Map(this.store.list('bot-state', userId).filter(p => p.kind === 'bot-profile').map(p => [p.botId, p]));
+      // Existing Go bots have no display name column. Cache their public identity
+      // in Node metadata, without altering the shared Telegram credentials/schema.
+      if (this.config.backend === 'telegram' && bots.some(bot => !profiles.get(bot.id)?.name) && Date.now() - (this.botProfileChecks.get(userId) || 0) > 300_000) {
+        this.botProfileChecks.set(userId, Date.now());
+        try {
+          const owned = await this.withClient(userId, client => client.invoke(new Api.bots.GetAdminedBots()));
+          const known = new Map(bots.map(bot => [bot.id, bot]));
+          this.store.transaction(() => {
+            for (const identity of owned) {
+              const bot = known.get(String(identity.id));
+              if (bot) profiles.set(bot.id, this.botProfile(bot, identity));
+            }
+          });
+        } catch { /* Keep IDs and cached labels available even when Telegram is offline. */ }
+      }
+      return bots.map(bot => this.botSummary(bot, profiles.get(bot.id) || null));
+    });
+  }
   botStateId(bot) { return hash(`${this.config.telegramInstanceId || `${hostname()}:${process.pid}`}:${bot.id}`); }
   eligibleBots(userId, operation, channelIds = []) {
     if (operation === 'download' && this.config.downloadBots === 0) return [];
@@ -162,6 +195,7 @@ export class Telegram {
         bot.enabled = true;
         this.store.transaction(() => {
           this.store.put('bots', bot);
+          this.botProfile(bot, auth.user);
           this.store.put('bot-state', { id: this.botStateId(bot), botId: bot.id, ownerId: userId, dedicatedAuth: true, session: this.box.encode(client.session.save(), `bot-session:${bot.id}`) });
           if (assignedChannels) this.store.put('bot-state', { id: `bot-channels:${bot.id}`, kind: 'bot-channels', botId: bot.id, ownerId: userId, channelIds: assignedChannels });
           else this.store.delete('bot-state', `bot-channels:${bot.id}`);

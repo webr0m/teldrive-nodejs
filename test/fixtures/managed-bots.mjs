@@ -16,7 +16,7 @@ export function fixture() {
     ready: () => {}, close: () => {},
   };
   const telegram = new Telegram(store, { key: randomBytes(32), apiId: 1, apiHash: '0'.repeat(32), telegramInstanceId: 'test-managed', botClientPoolSize: 0 });
-  const administrator = new Api.User({ id: 10001, accessHash: 123, username: 'manager_bot', bot: true, botCanManageBots: true });
+  const administrator = new Api.User({ id: 10001, accessHash: 123, firstName: 'Administrador de archivos', username: 'manager_bot', bot: true, botCanManageBots: true });
   const owned = [administrator];
   let count = 0, permissionFailure = false, loseCreationResponse = false;
   const token = `10002:${'x'.repeat(35)}`;
@@ -30,7 +30,7 @@ export function fixture() {
       if (request instanceof Api.bots.CheckUsername) return true;
       if (request instanceof Api.bots.CreateBot) {
         count++;
-        const bot = new Api.User({ id: 10002, accessHash: 123, bot: true, username: request.username }); owned.push(bot);
+        const bot = new Api.User({ id: 10002, accessHash: 123, firstName: request.name, bot: true, username: request.username }); owned.push(bot);
         if (loseCreationResponse) throw new Error('Connection lost after Telegram created bot');
         return bot;
       }

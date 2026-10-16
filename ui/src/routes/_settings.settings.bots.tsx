@@ -11,6 +11,7 @@ import { SettingsPageHeader, SettingsRow, SettingsSection } from "@/components/s
 import { newIdempotencyKey } from "@/features/shared/idempotency";
 import { getQueryClient } from "@/lib/queryClient";
 import { ManagedBotsSettings } from "@/components/managed-bots-settings";
+import { botAlias, botLabel, botName } from "@/lib/bot-identity";
 
 export const Route = createFileRoute("/_settings/settings/bots")({
   component: BotsSettings,
@@ -135,8 +136,8 @@ function BotsSettings() {
           query.data.items.map((bot) => (
             <SettingsRow
               key={bot.id}
-              label={`@${bot.username || `bot-${bot.id}`}`}
-              description={t("Added {0}", [new Date(bot.createdAt).toLocaleString()])}
+              label={botName(bot)}
+              description={`${t("Alias")}: ${botAlias(bot)} · ID: ${bot.id}`}
             >
               <div className="flex items-center justify-end gap-2">
                 <Chip color={bot.enabled ? "success" : "warning"} variant="tertiary">
@@ -146,10 +147,10 @@ function BotsSettings() {
                   isIconOnly
                   size="sm"
                   variant="ghost"
-                  aria-label={t("Eliminar bot {0}", [bot.username || bot.id])}
+                  aria-label={t("Eliminar bot {0}", [botLabel(bot)])}
                   isDisabled={remove.isPending && deleteBot?.id === bot.id}
                   onPress={() =>
-                    setDeleteBot({ id: bot.id, name: bot.username || `bot-${bot.id}` })
+                    setDeleteBot({ id: bot.id, name: botLabel(bot) })
                   }
                 >
                   <TrashIcon className="size-4" />
