@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { ManagedBots } from '../src/managed-bots.mjs';
+import { Telegram } from '../src/telegram.mjs';
 const { Api } = createRequire(import.meta.url)('teleproto');
 
 import { fixture } from './fixtures/managed-bots.mjs';
@@ -11,6 +12,29 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { config } from '../src/config.mjs';
 import { createApp } from '../src/server.mjs';
+
+test('real user-session wrapper preserves managed-bot RPC errors instead of replacing them with a generic server failure', async () => {
+  const f=fixture();await f.managed.select('7','10001');
+  f.store.put('users',{id:'7',telegramSession:f.telegram.box.encode('fixture','telegram:7')});
+  f.telegram.withClient=Telegram.prototype.withClient;
+  const owned=[f.administrator,...Array.from({length:39},(_,i)=>({id:20000+i,username:`existing_${i}_bot`}))];
+  let code='BOT_CREATE_LIMIT_EXCEEDED',disconnected=0;
+  f.telegram.make=()=>({connect:async()=>{},disconnect:async()=>{disconnected++},invoke:async request=>{
+    request.getBytes();
+    if(request instanceof Api.bots.GetAdminedBots)return owned;
+    if(request instanceof Api.bots.CheckUsername)return true;
+    assert.ok(request instanceof Api.bots.CreateBot);throw {errorMessage:code,seconds:31};
+  }});
+  for(const [rpc,status,expected] of [['BOT_CREATE_LIMIT_EXCEEDED',409,'bot_creation_limit'],['MANAGER_PERMISSION_MISSING',422,'bot_manager_mode_required'],['USERNAME_OCCUPIED',409,'bot_username_occupied'],['FLOOD_WAIT_31',429,'bot_rate_limit']]){
+    code=rpc;await assert.rejects(()=>f.managed.create('7',f.input),error=>{
+      assert.equal(error.status,status);assert.equal(error.code,expected);
+      if(rpc==='BOT_CREATE_LIMIT_EXCEEDED'){assert.match(error.message,/40 bots/);assert.match(error.message,/BotFather/);assert.doesNotMatch(error.message,/fixture-token/);}
+      return true;
+    });
+  }
+  await assert.rejects(()=>f.telegram.withClient('7',()=>{throw {errorMessage:'UNKNOWN_RPC'}}),{status:503,code:'telegram_unavailable'});
+  assert.equal(disconnected,5);assert.equal(f.managed.read('7').pending.length,0);
+});
 
 test('manager selection checks ownership and management mode, without exposing credentials or changing other accounts', async () => {
   const f = fixture();

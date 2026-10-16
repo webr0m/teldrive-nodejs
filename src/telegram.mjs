@@ -27,7 +27,7 @@ export class Telegram {
     client.setLogLevel('none');
     return client;
   }
-  async withClient(userId, fn) {
+  async withClient(userId, fn, onError = telegramError) {
     // Secondary media servers authenticate their own bots. Never open the
     // primary server's personal MTProto key from a second machine.
     if (this.config.mediaNode) fail(503, 'media_node_requires_bot');
@@ -36,7 +36,7 @@ export class Telegram {
       if (!user?.telegramSession) fail(401, 'telegram_login_required');
       const client = this.make(this.box.decode(user.telegramSession, `telegram:${userId}`));
       try { await client.connect(); return await fn(client); }
-      catch (error) { if (error.status) throw error; telegramError(error); }
+      catch (error) { if (error.status) throw error; onError(error); }
       finally { await client.disconnect(); }
     });
   }

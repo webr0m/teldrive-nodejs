@@ -11,12 +11,13 @@ function username(value) {
 export function managedBotError(error) {
   if (error.status) throw error;
   const code = error.errorMessage || '';
+  if (/AUTH_KEY|SESSION_REVOKED/.test(code)) fail(401, 'telegram_session_revoked', 'Vuelve a iniciar sesión en Telegram.');
   const errors = {
     USERNAME_OCCUPIED: [409, 'bot_username_occupied', 'Ese usuario ya está ocupado. Elige otro.'],
     USERNAME_INVALID: [422, 'bot_username_invalid', 'El usuario del bot no es válido.'],
     USERNAME_SUFFIX_MISSING: [422, 'bot_username_invalid', 'El usuario debe terminar en bot.'],
     NAME_INVALID: [422, 'bot_name_invalid', 'Introduce un nombre de entre 1 y 64 caracteres.'],
-    BOT_CREATE_LIMIT_EXCEEDED: [409, 'bot_creation_limit', 'Tu cuenta alcanzó el límite de bots permitido por Telegram.'],
+    BOT_CREATE_LIMIT_EXCEEDED: [409, 'bot_creation_limit', 'Tu cuenta alcanzó el límite de bots de Telegram. Vincula un bot que ya tengas o libera un cupo desde BotFather. Quitar un bot de Teldrive no lo elimina de Telegram.'],
     MANAGER_PERMISSION_MISSING: [422, 'bot_manager_mode_required', 'Activa Bot Management Mode para el administrador en BotFather.'],
     MANAGER_INVALID: [422, 'bot_manager_invalid', 'El bot administrador ya no está disponible. Configúralo de nuevo.'],
     BOT_INVALID: [409, 'bot_manager_mismatch', 'Este bot no pertenece al administrador elegido. Utiliza su administrador original o añade su token.'],
@@ -50,7 +51,7 @@ export class ManagedBots {
         await this.telegram.withClient(userId, async client => {
           const owned = await client.invoke(new Api.bots.GetAdminedBots());
           if (!owned.some(candidate => String(candidate.id) === bot.id)) fail(403, 'bot_manager_not_owned', 'El bot administrador debe pertenecer a tu cuenta de Telegram.');
-        });
+        }, managedBotError);
         await this.checkManager(bot);
         this.store.put('settings', { id: `bot-manager:${userId}`, kind: 'bot-manager', ownerId: userId, botId: bot.id, updatedAt: now() });
         return this.read(userId);
@@ -70,7 +71,7 @@ export class ManagedBots {
     try {
       await this.telegram.withClient(userId, async client => {
         if (!await client.invoke(new Api.bots.CheckUsername({ username: checked }))) fail(409, 'bot_username_occupied', 'Ese usuario ya está ocupado.');
-      });
+      }, managedBotError);
       return { username: checked, available: true };
     } catch (error) { managedBotError(error); }
   }
@@ -98,8 +99,13 @@ export class ManagedBots {
           const existing = owned.find(bot => bot.username?.toLowerCase() === checked);
           if (existing) return existing;
           if (!await client.invoke(new Api.bots.CheckUsername({ username: checked }))) fail(409, 'bot_username_occupied', 'Ese usuario ya está ocupado.');
-          return client.invoke(new Api.bots.CreateBot({ name: displayName, username: checked, managerId: utils.getInputUser(administrator) }));
-        });
+          try {
+            return await client.invoke(new Api.bots.CreateBot({ name: displayName, username: checked, managerId: utils.getInputUser(administrator) }));
+          } catch (error) {
+            if (error.errorMessage === 'BOT_CREATE_LIMIT_EXCEEDED') fail(409, 'bot_creation_limit', `Tu cuenta ya tiene ${owned.length} bots y alcanzó el límite de Telegram. Vincula un bot existente o libera un cupo desde BotFather. Quitar un bot de Teldrive no lo elimina de Telegram.`);
+            throw error;
+          }
+        }, managedBotError);
         const botId = String(created.id);
         const record = { id: recordId, kind: 'managed-bot', ownerId: userId, botId, name: displayName, username: checked, managerId: manager.id, channelId, state: 'created', updatedAt: now() };
         this.store.put('settings', record);

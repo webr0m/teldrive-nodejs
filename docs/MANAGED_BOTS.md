@@ -21,6 +21,8 @@ El nuevo bot recibe permisos de publicación, edición y eliminación en el cana
 
 Si Telegram ya creó el bot pero falló el paso de configuración, la respuesta informa que está pendiente. La misma página muestra **Preparar reintento**, incluso después de recargar. Conserva el usuario del bot para completar su configuración: se consultan primero los bots que Telegram atribuye a tu cuenta, evitando crear otro tras perder una respuesta o repetir una petición.
 
+Si aparece que alcanzaste el límite de bots, el cupo lo aplica Telegram sobre todos los bots que posee tu cuenta, incluidos los que no aparecen vinculados a Teldrive. Puedes vincular uno que ya tengas o gestionar tus bots en BotFather. Quitar un bot de la lista de Teldrive no elimina su cuenta en Telegram ni libera ese cupo. Los errores de creación, usuario ocupado y tiempo de espera se conservan al atravesar la conexión del servidor para mostrar su causa concreta.
+
 ## Servidores y clientes
 
 La interfaz es compartida por la web y los clientes Android/iOS. Las sesiones de cliente pueden administrar sus propios bots, sin obtener acceso a usuarios, permisos, límites o credenciales del servidor.
