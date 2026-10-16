@@ -62,6 +62,8 @@ Solo las lecturas de contenido privado y playback pueden cambiar de origen. Nunc
 
 Los Workers gratuitos tienen cuotas. Configurar las rutas en modo de fallo abierto al alcanzar los límites deja pasar el tráfico al principal, sin contratar el producto Load Balancing de pago. No se garantiza capacidad ilimitada. Las rutas de ejemplo solo interceptan las familias `playback*` y `files/*`; las escrituras que coincidan siguen pasando una sola vez al principal.
 
+Después de **cada despliegue**, comprobar de nuevo el modo de fallo de ambas rutas en Cloudflare. Durante la activación con Wrangler 4.151.1 se observó que un despliegue posterior restablecía el fallo cerrado. Guardar y verificar **Fallo abierto (continuar)** después del último despliegue, sin aplicar esa opción al dominio personalizado del portal.
+
 ## Validación y reversión
 
 1. Probar la salud autenticada del nodo y verificar rechazo sin secreto.
