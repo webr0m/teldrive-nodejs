@@ -49,7 +49,32 @@ export function createMediaBalancer({ fetch: fetcher = (...args) => fetch(...arg
         if (origin.protocol !== 'https:' || origin.origin === url.origin || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash || !/^[A-Za-z0-9_-]{43,128}$/.test(env.MEDIA_NODE_SECRET || '')) return new Response('Portal unavailable', { status: 503 });
         target.host = origin.host;
         const headers = new Headers(request.headers); headers.delete('Host'); headers.set('X-Teldrive-Media-Node', env.MEDIA_NODE_SECRET); headers.set('X-Teldrive-PC-Portal', '1');
-        return fetcher(new Request(new Request(target, request), { headers, redirect: 'manual' }));
+        const media = mediaNodeRoute(request.method, url.pathname);
+        const controller = new AbortController(), abort = () => controller.abort();
+        if (media) request.signal.addEventListener('abort', abort, { once: true });
+        const timer = media ? setTimeout(abort, milliseconds(env.MEDIA_HEADER_TIMEOUT_MS, 15000, 1000, 60000)) : undefined;
+        let response;
+        try {
+          response = await fetcher(new Request(new Request(target, request), { headers, redirect: 'manual',
+            ...(media ? { signal: controller.signal } : {}) }));
+        } catch (error) { if (!media) throw error; }
+        finally { clearTimeout(timer); request.signal.removeEventListener('abort', abort); }
+        let node = 'secondary';
+        // Accounts without usable bots must also work through the PC portal.
+        // Retry only media reads, before sending any bytes; keep all writes
+        // and local administration pinned to the PC's normal routing.
+        if (media && (!response || retryable(response.status))) {
+          await response?.body?.cancel();
+          const fallback = new URL(primary); fallback.pathname = url.pathname; fallback.search = url.search;
+          headers.delete('X-Teldrive-Media-Node'); headers.delete('X-Teldrive-PC-Portal');
+          if (headers.get('Origin') === url.origin) headers.set('Origin', fallback.origin);
+          try { response = await fetcher(new Request(fallback, { method: request.method, headers, redirect: 'manual', signal: request.signal })); }
+          catch { response = new Response('Media origins unavailable', { status: 503 }); }
+          node = 'primary';
+        }
+        const outputHeaders = new Headers(response.headers); outputHeaders.delete('X-Teldrive-Media-Node'); outputHeaders.delete('X-Teldrive-PC-Portal');
+        if (media) { outputHeaders.set('Cache-Control', 'no-store'); outputHeaders.set('X-Teldrive-Origin', node); }
+        return new Response(response.body, { status: response.status, statusText: response.statusText, headers: outputHeaders });
       }
       if (url.origin !== primary) return new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
       if (!mediaNodeRoute(request.method, url.pathname) || env.MEDIA_NODE_ENABLED !== 'true') return primaryRequest();

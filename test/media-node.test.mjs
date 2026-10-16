@@ -90,6 +90,45 @@ test('a response stream failure after headers cannot replay the download on anot
   await assert.rejects(() => response.text(), /connection lost/); assert.equal(reads, 1);
 });
 
+test('the PC portal falls back for media without bots, preserving ranges and never retrying writes or denied reads', async () => {
+  const portalEnv = { ...env, MEDIA_NODE_ADMIN: 'true', MEDIA_NODE_PORTAL_ORIGIN: 'https://portal.example.com' };
+  for (const status of [503, 401, 403, 404]) {
+    const { router, content } = fixture({ secondaryStatus: status });
+    const request = new Request(portalEnv.MEDIA_NODE_PORTAL_ORIGIN + '/api/v1/playback?ticket=private', { headers: { Range: 'bytes=10-19', Cookie: 'session=private', Origin: portalEnv.MEDIA_NODE_PORTAL_ORIGIN } });
+    const response = await router.fetch(request, portalEnv), fallback = status === 503;
+    assert.equal(response.status, fallback ? 206 : status); assert.equal(content().length, fallback ? 2 : 1);
+    assert.equal(response.headers.get('X-Teldrive-Origin'), fallback ? 'primary' : 'secondary');
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    if (fallback) {
+      const last = content().at(-1);
+      assert.equal(last.url, env.PUBLIC_ORIGIN + '/api/v1/playback?ticket=private');
+      assert.equal(last.headers.get('Range'), 'bytes=10-19'); assert.equal(last.headers.get('Cookie'), 'session=private');
+      assert.equal(last.headers.get('Origin'), env.PUBLIC_ORIGIN);
+      assert.equal(last.headers.has('X-Teldrive-Media-Node'), false); assert.equal(last.headers.has('X-Teldrive-PC-Portal'), false);
+    }
+  }
+  const { router, content } = fixture({ secondaryStatus: 503 });
+  const result = await router.fetch(new Request(portalEnv.MEDIA_NODE_PORTAL_ORIGIN + '/api/v1/admin/settings', { method: 'PATCH', body: 'once' }), portalEnv);
+  assert.equal(result.status, 503); assert.equal(content().length, 1); assert.equal(await content()[0].text(), 'once');
+});
+
+test('the portal header timeout cannot abort an established stream and connection failures retain the read fallback', async () => {
+  const portalEnv = { ...env, MEDIA_NODE_ADMIN: 'true', MEDIA_NODE_PORTAL_ORIGIN: 'https://portal.example.com', MEDIA_HEADER_TIMEOUT_MS: '1000' };
+  let sourceSignal;
+  const streaming = createMediaBalancer({ fetch: async request => { sourceSignal = request.signal; return new Response('video'); } });
+  const response = await streaming.fetch(new Request(portalEnv.MEDIA_NODE_PORTAL_ORIGIN + '/api/v1/playback?ticket=private'), portalEnv);
+  await new Promise(resolve => setTimeout(resolve, 1100));
+  assert.equal(sourceSignal.aborted, false); assert.equal(await response.text(), 'video');
+  const calls = [];
+  const offline = createMediaBalancer({ fetch: async request => {
+    calls.push(request);
+    if (new URL(request.url).origin === env.MEDIA_NODE_ORIGIN) throw new Error('PC offline');
+    return new Response('primary');
+  } });
+  const fallback = await offline.fetch(new Request(portalEnv.MEDIA_NODE_PORTAL_ORIGIN + '/api/v1/playback?ticket=private'), portalEnv);
+  assert.equal(await fallback.text(), 'primary'); assert.equal(calls.length, 2); assert.equal(calls[1].headers.has('X-Teldrive-Media-Node'), false);
+});
+
 test('the PC portal forwards sign-in and global administration without its internal key, preserving owner-only permissions', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'td-pc-portal-'));
   const common = { CONFIG_FILE: 'none', DATA_KEY: randomBytes(32).toString('base64'), TELEGRAM_API_ID: '1', TELEGRAM_API_HASH: '0123456789abcdef0123456789abcdef', MEDIA_ENABLED: 'false', PORT: '0', OWNER_USER_ID: '7' };

@@ -36,6 +36,8 @@ El portal conserva el control por ID de propietario: no convierte otras cuentas 
 
 Los inicios de sesión desde el portal se tramitan en el principal y crean sesiones normales de Teldrive. El nodo comparte esos permisos web, pero no conecta la clave personal MTProto desde otra máquina. Los bots del secundario usan sus propias claves. Si el principal no está disponible, no se podrán realizar nuevos inicios de sesión ni la administración global.
 
+Si una cuenta no dispone de bots utilizables, el portal también solicita sus medios al principal al recibir un 503 del nodo. El respaldo conserva los rangos y los permisos del usuario, sin repetir escrituras ni rechazos 401/403/404. La configuración local del PC permanece en el propio nodo.
+
 Publicar únicamente `127.0.0.1:3010` mediante una ruta del túnel, por ejemplo `cloud-pc-origin.example.com`. Ese origen interno debe permanecer sin rutas de Workers y rechazar cualquier petición sin la clave. Para el portal, un **Custom Domain** del Worker en `cloud-pc.example.com` reenvía al origen interno y añade la clave; no se entrega al navegador. Se necesitan nombres separados porque una ruta de Worker no admite ser el destino de un `fetch()` desde la misma zona. El formulario no necesita desactivar TLS de Cloudflare ni exponer discos/carpetas locales. Para usar solamente medios, desactivar `MEDIA_NODE_ADMIN` en ambos y limitar la ruta del túnel a los endpoints de medios/salud.
 
 ## Balanceador de Cloudflare
