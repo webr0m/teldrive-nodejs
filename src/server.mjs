@@ -11,6 +11,7 @@ import { Store, fail, now, id, hash, token, date, page, number, expires, expired
 import { Auth, cookies } from './auth.mjs';
 import { Catalog } from './catalog.mjs';
 import { Telegram } from './telegram.mjs';
+import { ManagedBots } from './managed-bots.mjs';
 import { Storage } from './storage.mjs';
 import { Uploads } from './uploads.mjs';
 import { Shares } from './shares.mjs';
@@ -191,6 +192,11 @@ route('POST', '/api/v1/uploads/:uploadId/complete', async c => { const r = await
 route('DELETE', '/api/v1/uploads/:uploadId', async c => { await c.uploads.abort(c.user.id, c.params.uploadId); return empty(); });
 route('GET', '/api/v1/bots', c => result(page(c.store.list('bots', c.user.id).map(bot => c.telegram.botSummary(bot)), c.query)));
 route('POST', '/api/v1/bots', async c => { if (c.config.backend !== 'telegram') fail(503, 'telegram_not_configured'); return result(await c.telegram.addBots(c.user.id, c.body.tokens)); });
+route('GET', '/api/v1/bots/manager', c => result({ ...c.managedBots.read(c.user.id), supported: c.config.backend === 'telegram' }));
+route('POST', '/api/v1/bots/manager', async c => { if (c.config.backend !== 'telegram') fail(503, 'telegram_not_configured'); return result(await c.managedBots.select(c.user.id, c.body.botId)); });
+route('DELETE', '/api/v1/bots/manager', async c => result(await c.managedBots.clear(c.user.id)));
+route('POST', '/api/v1/bots/managed/check-username', async c => { if (c.config.backend !== 'telegram') fail(503, 'telegram_not_configured'); return result(await c.managedBots.checkUsername(c.user.id, c.body.username)); });
+route('POST', '/api/v1/bots/managed', async c => { if (c.config.backend !== 'telegram') fail(503, 'telegram_not_configured'); const created = await c.managedBots.create(c.user.id, c.body); return result(created, created.setupPending ? 202 : 201); });
 route('DELETE', '/api/v1/bots/:botId', c => {
   const bot = c.store.get('bots', c.params.botId); if (!bot || bot.ownerId !== c.user.id) fail(404, 'bot_not_found');
   c.store.transaction(() => { c.store.delete('bots', bot.id, c.user.id); for(const state of c.store.list('bot-state',c.user.id)) if(state.botId===bot.id || state.id===bot.id) c.store.delete('bot-state',state.id); }); return empty();
@@ -329,6 +335,7 @@ export function createApp(config, overrides = {}) {
     const auth = new Auth(store, config, telegram), storage = overrides.storage || new Storage(config, telegram), uploads = new Uploads(store, catalog, storage, config), shares = new Shares(store, catalog, config), settings = new Settings(store, config, uploads);
     const access = new Access(store, catalog); uploads.access = access;
     context = { store, catalog, telegram, auth, storage, uploads, shares, settings, serverConfiguration: new ServerConfiguration(config), config, access, playback: new Playback(store, catalog, shares, config) };
+    context.managedBots = new ManagedBots(store, telegram);
     context.playback.access = access;
     context.jobs = new Jobs(store, uploads, config); if (!config.mediaNode) context.jobs.start();
     context.rclone = new Rclone(config, { allowed: user => { const account = store.get('users', user); return !!account && !account.disabled && ['owner','admin'].includes(account.role); } }); if (!config.mediaNode) context.rclone.start();

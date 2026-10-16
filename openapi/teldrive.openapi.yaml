@@ -1990,6 +1990,118 @@ paths:
       security:
         - BearerAuth: []
         - CookieAuth: []
+  /v1/bots/manager:
+    get:
+      operationId: getBotManager
+      tags: [Bots]
+      security: [{ BearerAuth: [] }, { CookieAuth: [] }]
+      responses:
+        "200":
+          description: Manager configuration for the current account, without credentials.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BotManagerResponse" }
+    post:
+      operationId: selectBotManager
+      tags: [Bots]
+      security: [{ BearerAuth: [] }, { CookieAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [botId]
+              properties:
+                botId: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: Ownership and Bot Management Mode verified.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BotManagerResponse" }
+        default:
+          description: Configuration rejected without changing the previous manager.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    delete:
+      operationId: clearBotManager
+      tags: [Bots]
+      security: [{ BearerAuth: [] }, { CookieAuth: [] }]
+      responses:
+        "200":
+          description: Manager selection removed; Telegram bots remain intact.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BotManagerResponse" }
+  /v1/bots/managed/check-username:
+    post:
+      operationId: checkManagedBotUsername
+      tags: [Bots]
+      security: [{ BearerAuth: [] }, { CookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username]
+              properties:
+                username: { type: string, minLength: 5, maxLength: 33 }
+      responses:
+        "200":
+          description: Available username. Creation checks availability again.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [username, available]
+                properties:
+                  username: { type: string }
+                  available: { type: boolean }
+        default:
+          description: Invalid, occupied or temporarily unavailable username.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  /v1/bots/managed:
+    post:
+      operationId: createManagedBot
+      description: Creates a user-owned bot, exports its token without rotation and registers it in the chosen private channel. Retrying the same username recovers setup instead of creating another bot.
+      tags: [Bots]
+      security: [{ BearerAuth: [] }, { CookieAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, username, channelId]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 64 }
+                username: { type: string, minLength: 5, maxLength: 33 }
+                channelId: { type: string }
+      responses:
+        "201":
+          description: Bot configured and ready for transfers in its channel.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ManagedBotResponse" }
+        "202":
+          description: Bot exists in Telegram; channel setup can be retried.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ManagedBotResponse" }
+        default:
+          description: Creation rejected before a bot was returned.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
   /v1/bots/{botId}:
     delete:
       operationId: deleteBot
@@ -7230,6 +7342,31 @@ components:
         selected:
           type: boolean
           default: true
+    BotManagerResponse:
+      type: object
+      required: [configured, pending]
+      properties:
+        configured: { type: boolean }
+        supported: { type: boolean }
+        bot: { $ref: "#/components/schemas/BotSummary" }
+        pending:
+          type: array
+          items:
+            type: object
+            required: [botId, name, username, channelId]
+            properties:
+              botId: { type: string }
+              name: { type: string }
+              username: { type: string }
+              channelId: { type: string }
+    ManagedBotResponse:
+      type: object
+      required: [bot, channelId, setupPending]
+      properties:
+        bot: { $ref: "#/components/schemas/BotSummary" }
+        channelId: { type: string }
+        setupPending: { type: boolean }
+        message: { type: string }
     BotSummary:
       type: object
       required:

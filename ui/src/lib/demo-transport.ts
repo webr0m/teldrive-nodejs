@@ -151,6 +151,7 @@ export async function demoRequest(request: Request): Promise<Response> {
     });
     return json(channel);
   }
+  if (path === "/v1/bots/manager" && method === "GET") return json({ configured: false, supported: false, pending: [] });
   if (path === "/v1/bots" && method === "GET")
     return json({
       items: [{ id: 1000003, username: "bot_de_ejemplo", enabled: true, createdAt: now() }],

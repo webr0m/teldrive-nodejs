@@ -10,6 +10,7 @@ import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { SettingsPageHeader, SettingsRow, SettingsSection } from "@/components/settings-layout";
 import { newIdempotencyKey } from "@/features/shared/idempotency";
 import { getQueryClient } from "@/lib/queryClient";
+import { ManagedBotsSettings } from "@/components/managed-bots-settings";
 
 export const Route = createFileRoute("/_settings/settings/bots")({
   component: BotsSettings,
@@ -41,8 +42,10 @@ function BotsSettings() {
       toast.error(t("No se pudo eliminar el bot de Telegram"), { description: userMessage(error) });
     },
   });
-  const refresh = () =>
-    getQueryClient().invalidateQueries({ queryKey: $api.queryOptions("get", "/v1/bots").queryKey });
+  const refresh = () => Promise.all([
+    getQueryClient().invalidateQueries({ queryKey: $api.queryOptions("get", "/v1/bots").queryKey }),
+    getQueryClient().invalidateQueries({ queryKey: $api.queryOptions("get", "/v1/bots/manager").queryKey }),
+  ]);
 
   const handleAddBots = async () => {
     const tokens = [
@@ -87,8 +90,9 @@ function BotsSettings() {
         title={t("Bots de Telegram")}
         description={t("Bots utilizados para transferir datos en paralelo a Telegram.")}
       />
+      <ManagedBotsSettings bots={query.data.items} onChanged={refresh} />
       <SettingsSection
-        title={t("Añadir bots")}
+        title={t("Vincular bots existentes")}
         description={t(
           "Pega una clave de BotFather por línea. Cada bot se verifica y se añade a los canales existentes antes de activarse. Espera a que termine la operación.",
         )}

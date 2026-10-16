@@ -101,6 +101,7 @@ export function userMessage(error: unknown): string {
   const normalized = normalizeApiError(error);
   if (normalized.code === 'operation_not_available') return t("Esta función todavía no está disponible en este servidor.");
   if (normalized.code.startsWith('media_')) return normalized.message;
+  if (normalized.code.startsWith('bot_')) return normalized.message;
   switch (normalized.status) {
     case 0:
       return t("No se pudo conectar con el servidor. Comprueba la conexión y vuelve a intentarlo.");

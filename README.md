@@ -53,6 +53,8 @@ Para desplegar detrás de Cloudflare, consulta [la política de caché y optimiz
 
 Para añadir un PC como nodo de medios con balanceo y administración del propietario, consulta [el despliegue híbrido](docs/HYBRID.md). El secundario utiliza claves propias de bots y mantiene las operaciones personales de Telegram en el principal.
 
+En **Configuración → Bots** puedes elegir tu bot administrador y crear bots de almacenamiento desde Teldrive. Consulta [la preparación y recuperación de bots administrados](docs/MANAGED_BOTS.md). La función está disponible también en la interfaz de cliente móvil y mantiene la base de datos de Teldrive existente.
+
 La aplicación funciona directamente en el navegador. Para integrar su API autoriza orígenes exactos con `CORS_ORIGINS` y crea una clave desde Administración. Una clave de usuario da acceso a toda su unidad: úsala en el servidor de tu otra aplicación; no la publiques en JavaScript enviado a visitantes.
 
 ```js

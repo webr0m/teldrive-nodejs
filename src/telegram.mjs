@@ -42,10 +42,12 @@ export class Telegram {
   }
   botSummary(bot) { return { id: Number(bot.id), username: bot.username, enabled: bot.enabled, createdAt: bot.createdAt }; }
   botStateId(bot) { return hash(`${this.config.telegramInstanceId || `${hostname()}:${process.pid}`}:${bot.id}`); }
-  eligibleBots(userId, operation) {
+  eligibleBots(userId, operation, channelIds = []) {
     if (operation === 'download' && this.config.downloadBots === 0) return [];
-    const states = new Map(this.store.list('bot-state', userId).map(state => [state.id, state]));
+    const records = this.store.list('bot-state', userId), states = new Map(records.map(state => [state.id, state]));
+    const assignments = new Map(records.filter(record => record.kind === 'bot-channels').map(record => [record.botId, record.channelIds]));
     let bots = this.store.list('bots', userId).filter(b => b.enabled && !(Date.parse(states.get(this.botStateId(b))?.retryAfter || '') > Date.now()));
+    bots = bots.filter(bot => !assignments.has(bot.id) || channelIds.every(channel => assignments.get(bot.id).includes(String(channel))));
     if (operation === 'download') bots = bots.slice(0, this.config.downloadBots ?? 20);
     if (!bots.length) return [];
     const key = `${userId}:${operation}`, index = this.rotation.get(key) || 0; this.rotation.set(key, (index + 1) % bots.length);
@@ -109,8 +111,8 @@ export class Telegram {
     this.botClients.clear();
     await Promise.allSettled([...this.clients].map(client=>client.disconnect())); this.clients.clear();
   }
-  async withTransfer(userId, operation, fn, signal) {
-    for (const bot of this.eligibleBots(userId, operation)) {
+  async withTransfer(userId, operation, fn, signal, channelIds = []) {
+    for (const bot of this.eligibleBots(userId, operation, channelIds)) {
       if (signal?.aborted) return;
       try { return await this.withBot(bot, fn); }
       catch (error) {
@@ -127,31 +129,46 @@ export class Telegram {
     if (!Array.isArray(tokens) || !tokens.length || tokens.length > 200 || tokens.some(t => typeof t !== 'string' || !/^[1-9][0-9]{4,19}:[A-Za-z0-9_-]{20,100}$/.test(t))) fail(422, 'invalid_bot_tokens');
     const bots = [], failedIndexes = [];
     for (const [index, token] of tokens.entries()) {
-      const botId = token.split(':')[0], existing = this.store.get('bots', botId);
-      if (existing && existing.ownerId !== userId) { failedIndexes.push(index); continue; }
-      const bot = { id: botId, ownerId: userId, enabled: false, tokenCiphertext: this.secureBlob.seal(token, 'bot-token').toString('hex'), createdAt: existing?.createdAt || now() };
-      const client = this.make();
-      try {
+      try { bots.push(await this.registerBot(userId, token)); }
+      catch { failedIndexes.push(index); }
+    }
+    return { bots, failedIndexes };
+  }
+  async registerBot(userId, token, channelIds) {
+    if (typeof token !== 'string' || !/^[1-9][0-9]{4,19}:[A-Za-z0-9_-]{20,100}$/.test(token)) fail(422, 'invalid_bot_tokens');
+    const botId = token.split(':')[0], existing = this.store.get('bots', botId);
+    if (existing && existing.ownerId !== userId) fail(409, 'bot_owner_conflict');
+    const channels = this.store.list('channels', userId).filter(channel => !channelIds || channelIds.includes(channel.id));
+    if (channelIds && channels.length !== channelIds.length) fail(404, 'bot_channel_not_found');
+    const previousAssignment = channelIds ? this.store.get('bot-state', `bot-channels:${botId}`) : undefined;
+    const assignedChannels = channelIds && (!existing?.enabled || previousAssignment)
+      ? [...new Set([...(previousAssignment?.channelIds || []), ...channelIds])] : undefined;
+    const bot = { id: botId, ownerId: userId, enabled: false, tokenCiphertext: this.secureBlob.seal(token, 'bot-token').toString('hex'), createdAt: existing?.createdAt || now() };
+    const client = this.make();
+    try {
         await client.connect();
         const auth = await client.invoke(new Api.auth.ImportBotAuthorization({ apiId: this.config.apiId, apiHash: this.config.apiHash, botAuthToken: token }));
         if (String(auth.user.id) !== botId || !auth.user.bot || !auth.user.username) throw new Error('Invalid bot identity');
         bot.username = auth.user.username;
         await this.withClient(userId, async owner => {
           const peer = await owner.getInputEntity(bot.username);
-          for (const channel of this.store.list('channels', userId)) {
+          for (const channel of channels) {
             const entity = await this.entity(owner, channel.id);
             try { await owner.invoke(new Api.channels.InviteToChannel({ channel: entity, users: [peer] })); }
             catch (error) { if (error.errorMessage !== 'USER_ALREADY_PARTICIPANT') throw error; }
             await owner.invoke(new Api.channels.EditAdmin({ channel: entity, userId: peer, adminRights: new Api.ChatAdminRights({ postMessages: true, editMessages: true, deleteMessages: true }), rank: 'Teldrive' }));
           }
         });
-        bot.enabled = true; this.store.put('bots', bot);
-        this.store.put('bot-state', { id: this.botStateId(bot), botId: bot.id, ownerId: userId, dedicatedAuth: true, session: this.box.encode(client.session.save(), `bot-session:${bot.id}`) });
-        bots.push(this.botSummary(bot));
-      } catch { failedIndexes.push(index); }
-      finally { await client.disconnect(); }
-    }
-    return { bots, failedIndexes };
+        bot.enabled = true;
+        this.store.transaction(() => {
+          this.store.put('bots', bot);
+          this.store.put('bot-state', { id: this.botStateId(bot), botId: bot.id, ownerId: userId, dedicatedAuth: true, session: this.box.encode(client.session.save(), `bot-session:${bot.id}`) });
+          if (assignedChannels) this.store.put('bot-state', { id: `bot-channels:${bot.id}`, kind: 'bot-channels', botId: bot.id, ownerId: userId, channelIds: assignedChannels });
+          else this.store.delete('bot-state', `bot-channels:${bot.id}`);
+        });
+        await this.dropBot(bot.id);
+        return this.botSummary(bot);
+    } finally { await client.disconnect(); }
   }
   persistFlow(flow, client) { flow.state = this.box.encode({ ...flow.state, session: client.session.save() }, `flow:${flow.id}`); this.store.put('flows', flow); }
   flowResponse(flow) { return { flowId: flow.id, expiresAt: flow.expiresAt, passwordRequired: !!flow.passwordRequired, ...(flow.qr ? { state: flow.passwordRequired ? 'password_required' : 'pending', qrUrl: flow.qrUrl, qrExpiresAt: flow.qrExpiresAt } : {}) }; }
@@ -249,7 +266,7 @@ export class Telegram {
       const entity = await this.entity(client, channel.id);
       const message = await client.sendFile(entity, { file: new CustomFile(filename, size, diskPath), forceDocument: true, workers: 1 });
       return { backend: 'telegram', channelId: channel.id, messageId: message.id, size };
-    });
+    }, undefined, [String(channel.id)]);
   }
   async clone(userId, part) {
     return this.withClient(userId, async client => {
@@ -274,7 +291,7 @@ export class Telegram {
         if (!remaining) break;
       }
       if (remaining && !signal?.aborted) fail(503, 'telegram_part_truncated');
-    }, signal);
+    }, signal, part.channelId ? [String(part.channelId)] : []);
   }
   async describe(userId, parts) {
     return this.withTransfer(userId, 'download', async client => {
@@ -285,7 +302,7 @@ export class Telegram {
         const size = Number(message.media.document.size); if (!Number.isSafeInteger(size) || size < 0) fail(503, 'telegram_part_size_invalid'); sizes.push(size);
       }
       return sizes;
-    });
+    }, undefined, [...new Set(parts.map(part => String(part.channelId)))]);
   }
   async remove(userId, part) { return this.withClient(userId, async client => client.deleteMessages(await this.entity(client, part.channelId), [part.messageId], { revoke: true })); }
 }

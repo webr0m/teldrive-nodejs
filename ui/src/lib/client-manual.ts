@@ -77,7 +77,10 @@ export const clientManual = [
     steps: [
       "Abre Configuración → Bots para consultar, añadir o quitar tus propios bots según los permisos de tu cuenta.",
       "Los bots son opcionales y pueden mejorar la velocidad de carga y descarga al repartir transferencias. El resultado depende de Telegram, la conexión y los límites del servidor; no hay una velocidad garantizada.",
-      "Crea el bot en Telegram con BotFather y utiliza su token en Teldrive. El token es una credencial: no lo compartas ni lo incluyas en capturas.",
+      "Para crear bots desde Teldrive, prepara una sola vez un bot propio en BotFather: activa Bot Management Mode en sus ajustes. Añade su token en Vincular bots existentes y selecciónalo en Crear bots desde Teldrive → Configurar bot administrador. Pulsa Verificar y guardar administrador.",
+      "Introduce el nombre y un usuario de 5 a 32 caracteres terminado en bot. Puedes comprobar su disponibilidad antes de elegir el canal privado y pulsar Crear bot y configurar canal. El nuevo bot pertenece a tu cuenta; el administrador elegido también puede gestionarlo. El token se guarda cifrado y no se muestra.",
+      "El bot recibe permisos de publicación, edición y eliminación solo en el canal elegido. Telegram limita cuántos bots puedes crear y la frecuencia de las operaciones. Si el bot se creó pero quedó pendiente configurar el canal, utiliza Preparar reintento: conserva el mismo usuario para completar la configuración sin crear otro bot.",
+      "También puedes seguir creando bots con BotFather y añadir sus tokens en Vincular bots existentes. Cada token es una credencial: no lo compartas ni lo incluyas en capturas. Quitar la selección de administrador o desvincular un bot en Teldrive no elimina la cuenta del bot en Telegram.",
       "Los bots necesitan acceso a los canales utilizados por tu unidad. Un fallo de permisos o de acceso a Telegram no se resuelve aumentando la concurrencia.",
       "Cambiar un bot puede afectar a otras instalaciones que usan la misma base. La app móvil no permite modificar usuarios ni límites globales del servidor.",
     ],
