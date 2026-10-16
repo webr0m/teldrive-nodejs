@@ -90,7 +90,11 @@ test("mobile navigation has one menu per purpose and a reachable personal channe
   await page.getByRole("button", { name: "Volver", exact: true }).click();
   await page.getByRole("link", { name: /^Ayuda y manual/ }).click();
   await page.getByRole("textbox", { name: "Buscar en el manual" }).fill("Elegir el canal");
-  await expect(page.locator("details")).toContainText("Cambiar de canal no mueve ni elimina");
+  await expect(
+    page.locator("details").filter({
+      has: page.locator("summary").filter({ hasText: /^Elegir el canal de tu unidad$/ }),
+    }),
+  ).toContainText("Cambiar de canal no mueve ni elimina");
 });
 
 test("client screens and touch controls fit narrow portrait and landscape viewports", async ({
