@@ -27,6 +27,9 @@ owner-user-id = ''
 cors-origins = []
 allow-iframe = false
 [node.limits]
+playback-diagnostics-enabled = 1
+playback-diagnostics-max-sessions = 128
+playback-diagnostics-ttl-seconds = 600
 part-size = 16777216
 max-file-size = 107374182400
 concurrent-transfers = 2

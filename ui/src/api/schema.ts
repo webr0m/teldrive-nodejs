@@ -52,6 +52,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/playback/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Owner-session-only, bounded in-memory statistics for one playback ticket. No Telegram credentials, internal addresses or ticket values are included. The edge merges authorized primary and secondary snapshots. */
+        get: operations["getPlaybackDiagnostics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/playback/tracks": {
         parameters: {
             query?: never;
@@ -1820,6 +1837,21 @@ export interface components {
         };
         ETag: string;
         MediaTrack: {
+            width?: number;
+            height?: number;
+            channels?: number;
+            sample_rate?: number;
+            bit_rate?: number;
+            duration?: number;
+            bits_per_raw_sample?: number;
+            profile?: string;
+            pix_fmt?: string;
+            avg_frame_rate?: string;
+            channel_layout?: string;
+            color_space?: string;
+            color_transfer?: string;
+            color_primaries?: string;
+            field_order?: string;
             /** Format: int32 */
             index: number;
             /** @enum {string} */
@@ -1831,8 +1863,73 @@ export interface components {
             bitmap: boolean;
         };
         MediaTracks: {
+            format?: components["schemas"]["MediaFormat"];
             available: boolean;
             tracks: components["schemas"]["MediaTrack"][];
+        };
+        MediaFormat: {
+            name?: string;
+            duration?: number;
+            bit_rate?: number;
+        };
+        PlaybackDiagnostics: {
+            file: {
+                id: string;
+                name: string;
+                size: number;
+                mimeType?: string;
+                encryption: boolean;
+                parts: number;
+            };
+            metadata?: {
+                format?: components["schemas"]["MediaFormat"];
+                tracks?: components["schemas"]["MediaTrack"][];
+            };
+            unavailableNodes: string[];
+            nodes: {
+                /** @enum {string} */
+                role: "primary" | "secondary";
+                capturedAt: number;
+                startedAt?: number;
+                enabled: boolean;
+                activeRequests: number;
+                requests: number;
+                outputBytes: number;
+                inputBytes: number;
+                errors: number;
+                streams: {
+                    id: string;
+                    mode: string;
+                    purpose: string;
+                    state: string;
+                    startedAt: number;
+                    finishedAt?: number;
+                    firstByteMs?: number;
+                    rangeStart?: number;
+                    rangeEnd?: number;
+                    outputBytes: number;
+                    bytesPerSecond: number;
+                    sourceIds: string[];
+                    conversion?: {
+                        [key: string]: string | number | boolean;
+                    };
+                }[];
+                sources: {
+                    id: string;
+                    /** @enum {string} */
+                    kind: "bot" | "account" | "local";
+                    botId?: string;
+                    name?: string;
+                    username?: string;
+                    active: number;
+                    attempts: number;
+                    failures: number;
+                    inputBytes: number;
+                    forwardedBytes: number;
+                    bytesPerSecond: number;
+                    lastByteAt?: number;
+                }[];
+            }[];
         };
         CastingRelay: {
             addresses: string[];
@@ -2890,6 +2987,37 @@ export interface operations {
             };
             /** @description Service unavailable. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPlaybackDiagnostics: {
+        parameters: {
+            query: {
+                ticket: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current server counters, recent streams and bot identities. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybackDiagnostics"];
+                };
+            };
+            /** @description Invalid ticket or unavailable owner session. */
+            default: {
                 headers: {
                     [name: string]: unknown;
                 };

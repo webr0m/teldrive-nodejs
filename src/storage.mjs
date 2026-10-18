@@ -3,6 +3,7 @@ import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import { id, token, CryptoBox, fail } from './core.mjs';
 import { encryptLegacy, decryptLegacyRange, plainSize } from './legacy-crypto.mjs';
+import { traceTransfer, recordTransferInput, recordTransferForwarded } from './playback-diagnostics.mjs';
 
 export class Storage {
   constructor(config, telegram) { this.config = config; this.telegram = telegram; this.root = path.join(config.dataDir, 'objects'); this.box = new CryptoBox(config.key); }
@@ -48,10 +49,12 @@ export class Storage {
     if (!length) return;
     if (part.backend === 'telegram') return this.telegram.read(userId, part, offset, length, write, signal);
     if (!/^[a-f0-9-]{36}$/.test(part.objectId)) fail(503, 'invalid_object');
-    let remaining = length;
-    const stream = createReadStream(path.join(this.root, part.objectId), { start: offset, end: offset + length - 1, signal });
-    for await (const bytes of stream) { remaining -= bytes.length; await write(bytes); }
-    if (remaining) fail(503, 'part_truncated');
+    return traceTransfer({ kind: 'local' }, async () => {
+      let remaining = length;
+      const stream = createReadStream(path.join(this.root, part.objectId), { start: offset, end: offset + length - 1, signal });
+      for await (const bytes of stream) { remaining -= bytes.length; recordTransferInput(bytes.length); await write(bytes); recordTransferForwarded(bytes.length); }
+      if (remaining) fail(503, 'part_truncated');
+    });
   }
   async remove(userId, part) {
     if (part.backend === 'telegram') return this.telegram.remove(userId, part);

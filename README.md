@@ -55,6 +55,8 @@ Para añadir un PC como nodo de medios con balanceo y administración del propie
 
 En **Configuración → Bots** puedes elegir tu bot administrador y crear bots de almacenamiento desde Teldrive. Consulta [la preparación y recuperación de bots administrados](docs/MANAGED_BOTS.md). La función está disponible también en la interfaz de cliente móvil y mantiene la base de datos de Teldrive existente.
 
+El reproductor de vídeo y audio incluye **Estadísticas · Desarrollador**: búfer, códecs, fotogramas, solicitudes, conversión y bots reales de cada flujo. Consulta [las estadísticas, permisos y límites configurables](docs/PLAYBACK_DIAGNOSTICS.md).
+
 La aplicación funciona directamente en el navegador. Para integrar su API autoriza orígenes exactos con `CORS_ORIGINS` y crea una clave desde Administración. Una clave de usuario da acceso a toda su unidad: úsala en el servidor de tu otra aplicación; no la publiques en JavaScript enviado a visitantes.
 
 ```js

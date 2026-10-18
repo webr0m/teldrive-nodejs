@@ -288,6 +288,27 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
       tags:
         - Files
+  /v1/playback/diagnostics:
+    get:
+      operationId: getPlaybackDiagnostics
+      description: Owner-session-only, bounded in-memory statistics for one playback ticket. No Telegram credentials, internal addresses or ticket values are included. The edge merges authorized primary and secondary snapshots.
+      parameters:
+        - name: ticket
+          in: query
+          required: true
+          schema: { type: string, minLength: 43, maxLength: 43 }
+      responses:
+        "200":
+          description: Current server counters, recent streams and bot identities.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaybackDiagnostics" }
+        default:
+          description: Invalid ticket or unavailable owner session.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+      tags: [Files]
   /v1/playback/tracks:
     get:
       operationId: getPlaybackTracks
@@ -6901,6 +6922,21 @@ components:
         - default
         - bitmap
       properties:
+        width: { type: number }
+        height: { type: number }
+        channels: { type: number }
+        sample_rate: { type: number }
+        bit_rate: { type: number }
+        duration: { type: number }
+        bits_per_raw_sample: { type: number }
+        profile: { type: string }
+        pix_fmt: { type: string }
+        avg_frame_rate: { type: string }
+        channel_layout: { type: string }
+        color_space: { type: string }
+        color_transfer: { type: string }
+        color_primaries: { type: string }
+        field_order: { type: string }
         index:
           type: integer
           format: int32
@@ -6926,12 +6962,102 @@ components:
         - available
         - tracks
       properties:
+        format: { $ref: "#/components/schemas/MediaFormat" }
         available:
           type: boolean
         tracks:
           type: array
           items:
             $ref: "#/components/schemas/MediaTrack"
+    MediaFormat:
+      type: object
+      properties:
+        name: { type: string }
+        duration: { type: number }
+        bit_rate: { type: number }
+    PlaybackDiagnostics:
+      type: object
+      required: [file, nodes, unavailableNodes]
+      properties:
+        file:
+          type: object
+          required: [id, name, size, encryption, parts]
+          properties:
+            id: { type: string }
+            name: { type: string }
+            size: { type: number }
+            mimeType: { type: string }
+            encryption: { type: boolean }
+            parts: { type: integer }
+        metadata:
+          type: object
+          properties:
+            format: { $ref: "#/components/schemas/MediaFormat" }
+            tracks:
+              type: array
+              items: { $ref: "#/components/schemas/MediaTrack" }
+        unavailableNodes:
+          type: array
+          items: { type: string }
+        nodes:
+          type: array
+          items:
+            type: object
+            required: [role, capturedAt, enabled, activeRequests, requests, outputBytes, inputBytes, errors, streams, sources]
+            properties:
+              role: { type: string, enum: [primary, secondary] }
+              capturedAt: { type: number }
+              startedAt: { type: number }
+              enabled: { type: boolean }
+              activeRequests: { type: integer }
+              requests: { type: integer }
+              outputBytes: { type: number }
+              inputBytes: { type: number }
+              errors: { type: integer }
+              streams:
+                type: array
+                maxItems: 64
+                items:
+                  type: object
+                  required: [id, mode, purpose, state, startedAt, outputBytes, bytesPerSecond, sourceIds]
+                  properties:
+                    id: { type: string }
+                    mode: { type: string }
+                    purpose: { type: string }
+                    state: { type: string }
+                    startedAt: { type: number }
+                    finishedAt: { type: number }
+                    firstByteMs: { type: number }
+                    rangeStart: { type: number }
+                    rangeEnd: { type: number }
+                    outputBytes: { type: number }
+                    bytesPerSecond: { type: number }
+                    sourceIds:
+                      type: array
+                      items: { type: string }
+                    conversion:
+                      type: object
+                      additionalProperties:
+                        oneOf: [{ type: string }, { type: number }, { type: boolean }]
+              sources:
+                type: array
+                maxItems: 256
+                items:
+                  type: object
+                  required: [id, kind, active, attempts, failures, inputBytes, forwardedBytes, bytesPerSecond]
+                  properties:
+                    id: { type: string }
+                    kind: { type: string, enum: [bot, account, local] }
+                    botId: { type: string }
+                    name: { type: string }
+                    username: { type: string }
+                    active: { type: integer }
+                    attempts: { type: integer }
+                    failures: { type: integer }
+                    inputBytes: { type: number }
+                    forwardedBytes: { type: number }
+                    bytesPerSecond: { type: number }
+                    lastByteAt: { type: number }
     CastingRelay:
       type: object
       required:

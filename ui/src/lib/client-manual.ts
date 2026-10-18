@@ -55,6 +55,7 @@ export const clientManual = [
     steps: [
       "Toca un archivo compatible para abrir su visor. Puedes volver a la lista sin cerrar tu sesión.",
       "En vídeo, las pistas de audio, vídeo y subtítulos disponibles dependen del archivo. La conversión necesita el servicio multimedia del servidor y puede tardar al comenzar.",
+      "Durante vídeo o audio, abre Estadísticas · Desarrollador para ver códecs, búfer, fotogramas, velocidad y los bots que atienden esa sesión. Las cifras de bots requieren iniciar sesión como propietario del archivo; los enlaces públicos solo muestran datos del navegador. Cerrar el panel detiene las consultas. Con búfer suficiente puede no haber transferencias activas aunque el vídeo siga reproduciéndose.",
       "Las descargas y la reproducción requieren conexión. Solo los archivos que guardes en el dispositivo estarán disponibles fuera de línea.",
       "La publicidad se oculta mientras está abierto un visor. No se insertan anuncios dentro de tus vídeos.",
     ],

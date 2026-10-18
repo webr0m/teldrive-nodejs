@@ -34,3 +34,11 @@ test('upload fragments recover expired access and temporary overload without ret
   calls=0;await assert.rejects(()=>retryUploadPart(async()=>{calls++;throw{status:503}},signal,async()=>true,1,async()=>{}));assert.equal(calls,2);
   const controller=new AbortController(),waiting=abortableDelay(10000,controller.signal);controller.abort();await assert.rejects(waiting,{name:'AbortError'});
 });
+
+test('owner playback statistics refresh private authentication while public media tickets do not',async()=>{
+  let refreshes=0,reads=0;const transport=createSessionTransport(async input=>{
+    const url=String(input.url||input);if(url.endsWith('/refresh')){refreshes++;return new Response('{}');}
+    reads++;return new Response('{}',{status:reads===1?401:200});
+  },'https://drive.test');
+  assert.equal((await transport.request('/api/v1/playback/diagnostics?ticket=private')).status,200);assert.equal(refreshes,1);
+});

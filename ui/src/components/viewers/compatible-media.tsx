@@ -8,6 +8,7 @@ import { CastDialog } from "./cast-dialog";
 import { apiUrl } from "@/lib/client-runtime";
 import type { AirPlayVideo } from "@/lib/casting";
 import { isDemoActive, demoContentUrl } from "@/lib/client-demo";
+import { PlaybackDiagnostics } from "./playback-diagnostics";
 
 const VideoViewer = lazy(() => import("./video-viewer").then((m) => ({ default: m.VideoViewer })));
 export type PlaybackSession = { ticket: string; expiresAt: string; conversionAvailable: boolean };
@@ -200,7 +201,7 @@ export function CompatibleMedia({
     }
   };
   return (
-    <div ref={root} className="flex h-full min-h-0 w-full flex-col bg-black text-white">
+    <div ref={root} className="relative flex h-full min-h-0 w-full flex-col bg-black text-white">
       <div className="relative z-0 min-h-0 flex-1 overflow-hidden">
         {!source ? <p className="p-6">{t("Preparando reproducción…")}</p> : kind === "video" ? (
           <Suspense fallback={<p className="p-6">{t("Cargando vídeo…")}</p>}>
@@ -258,6 +259,7 @@ export function CompatibleMedia({
         )}
       </div>
       <div className="relative z-10 flex max-h-[45vh] shrink-0 flex-wrap items-center gap-3 overflow-y-auto border-t border-white/20 bg-black/90 p-3">
+        <PlaybackDiagnostics key={file.id} file={file} ticket={grant?.ticket} source={source} converted={converted} root={root} sourceStart={sourceStart} audio={audio} video={videoTrack} subtitle={subtitle} />
         {kind === "video" ? (
           <>
             <Button

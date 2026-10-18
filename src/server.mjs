@@ -23,6 +23,7 @@ import { Settings } from './settings.mjs';
 import { requireOwner } from './permissions.mjs';
 import { ServerConfiguration } from './server-configuration.mjs';
 import { Playback } from './playback.mjs';
+import { PlaybackDiagnostics, recordPlaybackOutput } from './playback-diagnostics.mjs';
 import { Media } from './media.mjs';
 import { gateway } from './gateway.mjs';
 import { PostgresStore } from './postgres.mjs';
@@ -277,7 +278,7 @@ async function content(c, file, share) {
   await c.uploads.transfers.run(async () => {
     c.res.statusCode = range.partial ? 206 : 200;
     const controller = new AbortController(); c.res.on('close', () => controller.abort());
-    const write = async bytes => { if (controller.signal.aborted) return; if (!c.res.write(bytes)) await once(c.res, 'drain', { signal: controller.signal }); };
+    const write = async bytes => { if (controller.signal.aborted) return; const ready = c.res.write(bytes); recordPlaybackOutput(bytes.length); if (!ready) await once(c.res, 'drain', { signal: controller.signal }); };
     let offset = 0;
     for (const p of file.parts || []) {
       const start = Math.max(range.start, offset), end = Math.min(range.end, offset + p.plainSize - 1);
@@ -294,16 +295,34 @@ for (const method of ['GET', 'HEAD']) {
 route('POST', '/api/v1/files/:fileId/playback', c => result(c.playback.create(c.access.authorize(c.user.id, c.params.fileId), c.session, undefined, c.user.id), 201));
 route('POST', '/api/v1/public/shares/:shareToken/files/:fileId/playback', c => { const share = publicShare(c); return result(c.playback.create(c.shares.file(share, c.params.fileId), undefined, share), 201); }, { public: true });
 for (const method of ['GET','HEAD']) route(method, '/api/v1/playback', c => {
-  const { file, share } = c.playback.resolve(c.query.get('ticket'));
+  const { file, grant } = c.playback.resolve(c.query.get('ticket'));
   const mode = c.query.get('mode') || 'original';
   if (!['original','audio','video'].includes(mode)) fail(422, 'invalid_playback_mode');
-  if (mode !== 'original') {
-    if(c.req.method === 'HEAD') { if(!c.media.available()) fail(503,'media_conversion_unavailable'); return result(undefined,200,{'Content-Type':mode==='audio'?'audio/mpeg':'video/mp4','Accept-Ranges':'none'}); }
-    return c.media.stream(c);
-  }
-  if (c.req.method !== 'HEAD') c.playback.consume(c.query.get('ticket'));
-  return content(c, file);
+  const run = () => {
+    if (mode !== 'original') {
+      if(c.req.method === 'HEAD') { if(!c.media.available()) fail(503,'media_conversion_unavailable'); return result(undefined,200,{'Content-Type':mode==='audio'?'audio/mpeg':'video/mp4','Accept-Ranges':'none'}); }
+      return c.media.stream(c);
+    }
+    if (c.req.method !== 'HEAD') c.playback.consume(c.query.get('ticket'));
+    return content(c, file);
+  };
+  if (c.req.method === 'HEAD') return run();
+  const controller = new AbortController(), stop = () => { if (!c.res.writableFinished) controller.abort(); };
+  c.res.once('close', stop);
+  const purpose = ['probe', 'conversion-input', 'subtitle-input'].includes(c.query.get('purpose')) ? c.query.get('purpose') : 'playback';
+  const range = mode === 'original' ? byteRange(c.req.headers.range, file.size) : {};
+  return c.diagnostics.run(grant.id, { mode, purpose, rangeStart: range.start, rangeEnd: range.end, signal: controller.signal }, run)
+    .finally(() => c.res.off('close', stop));
 }, { public: true });
+route('GET', '/api/v1/playback/diagnostics', c => {
+  if (!c.session) fail(403, 'session_required');
+  const { file, grant } = c.playback.resolve(c.query.get('ticket'));
+  if (file.ownerId !== c.user.id || grant.shareId || grant.actorId && grant.actorId !== c.user.id) fail(403, 'playback_diagnostics_owner_required');
+  const cached = c.media.cache.get(`${file.id}:${file.generation}`);
+  return result({ file: { id: file.id, name: file.name, size: file.size, mimeType: file.mimeType, encryption: !!file.encryption, parts: file.parts?.length || 0 },
+    metadata: cached ? { tracks: cached.tracks, format: cached.format } : undefined,
+    nodes: [c.diagnostics.snapshot(grant.id)], unavailableNodes: [] });
+});
 route('GET', '/api/v1/playback/tracks', async c => result(await c.media.tracks(c.query.get('ticket'))), { public: true });
 route('GET', '/api/v1/playback/subtitles', c => c.media.subtitles(c), { public: true });
 route('POST', '/api/v1/casting/relay', c => {
@@ -340,6 +359,7 @@ export function createApp(config, overrides = {}) {
     context.jobs = new Jobs(store, uploads, config); if (!config.mediaNode) context.jobs.start();
     context.rclone = new Rclone(config, { allowed: user => { const account = store.get('users', user); return !!account && !account.disabled && ['owner','admin'].includes(account.role); } }); if (!config.mediaNode) context.rclone.start();
     context.media = new Media(config, context.playback); context.playback.media = context.media;
+    context.diagnostics = new PlaybackDiagnostics(config);
     context.mobile = new Mobile(config, auth, overrides.mobile);
   }
   const cleanupTimer = context && !config.mediaNode ? setInterval(() => { void context.uploads.drainCleanup().catch(() => {}); context.mobile.prune(); }, 60000).unref() : undefined;

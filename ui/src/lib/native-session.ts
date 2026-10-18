@@ -88,7 +88,7 @@ export async function clientFetch(input: RequestInfo | URL, init?: RequestInit):
     headers: clientHeaders(mapped.headers),
     credentials: nativeClient ? "omit" : "same-origin",
   });
-  const privateRequest = !["/auth/", "/public/", "/mobile/google/", "/playback"].some((part) =>
+  const privateRequest = url.pathname === "/api/v1/playback/diagnostics" || !["/auth/", "/public/", "/mobile/google/", "/playback"].some((part) =>
     url.pathname.includes(part),
   );
   const retry = nativeClient && privateRequest ? request.clone() : undefined;

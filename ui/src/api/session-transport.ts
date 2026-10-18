@@ -29,7 +29,7 @@ export function createSessionTransport(fetcher: Fetcher, origin: string) {
     const canRefresh =
       !path.includes("/auth/") &&
       !path.startsWith("/api/v1/public/") &&
-      !path.startsWith("/api/v1/playback");
+      (!path.startsWith("/api/v1/playback") || path === "/api/v1/playback/diagnostics");
     // Recreate Blob/string bodies instead of buffering a second copy of their stream.
     const retry =
       canRefresh && (input instanceof Request || init?.body instanceof ReadableStream)

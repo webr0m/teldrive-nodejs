@@ -2,7 +2,7 @@
 export function mediaNodeRoute(method, pathname) {
   return ['GET', 'HEAD'].includes(method) && (
     /^\/api\/v1\/files\/[^/]+\/content(?:\/[^/]+)?$/.test(pathname) ||
-    /^\/api\/v1\/playback(?:\/(?:tracks|subtitles))?$/.test(pathname));
+    /^\/api\/v1\/playback(?:\/(?:tracks|subtitles|diagnostics))?$/.test(pathname));
 }
 
 const retryable = status => status >= 500 || status === 429;
@@ -42,6 +42,31 @@ export function createMediaBalancer({ fetch: fetcher = (...args) => fetch(...arg
         const headers = new Headers(request.headers); headers.delete('X-Teldrive-Media-Node'); headers.delete('X-Teldrive-PC-Portal');
         return fetcher(new Request(request, { headers, redirect: 'manual' }));
       };
+      // Statistics must consult both origins: a range request may change hosts.
+      // Authenticate/authorize on the primary before disclosing any node data.
+      if (request.method === 'GET' && url.pathname === '/api/v1/playback/diagnostics' &&
+          (url.origin === primary || env.MEDIA_NODE_ADMIN === 'true' && url.origin === env.MEDIA_NODE_PORTAL_ORIGIN)) {
+        const target = new URL(primary); target.pathname = url.pathname; target.search = url.search;
+        const headers = new Headers(request.headers); headers.delete('Host'); headers.delete('X-Teldrive-Media-Node'); headers.delete('X-Teldrive-PC-Portal');
+        if (headers.get('Origin') === url.origin && url.origin !== primary) headers.set('Origin', primary);
+        const response = await (url.origin === primary ? primaryRequest() : fetcher(new Request(target, { method:'GET', headers, redirect:'manual', signal:request.signal })));
+        if (!response.ok) return response;
+        const data = await response.json(), unavailableNodes = [];
+        if (env.MEDIA_NODE_ENABLED === 'true') {
+          try {
+            const secondary = new URL(env.MEDIA_NODE_ORIGIN);
+            if (secondary.protocol !== 'https:' || secondary.origin === primary || secondary.username || secondary.password || secondary.pathname !== '/' || secondary.search || secondary.hash || !/^[A-Za-z0-9_-]{43,128}$/.test(env.MEDIA_NODE_SECRET || '')) throw new Error('Invalid origin');
+            target.host = secondary.host; headers.set('X-Teldrive-Media-Node',env.MEDIA_NODE_SECRET);
+            const other = await fetcher(new Request(target,{method:'GET',headers,redirect:'manual',signal:AbortSignal.timeout(milliseconds(env.MEDIA_STATS_TIMEOUT_MS,3000,500,10000))}));
+            if(!other.ok){await other.body?.cancel();throw new Error('Node unavailable');}
+            const extra=await other.json();
+            if(!Array.isArray(extra.nodes))throw new Error('Invalid snapshot');
+            data.nodes=[...(data.nodes||[]),...extra.nodes];data.metadata ??= extra.metadata;
+          } catch { unavailableNodes.push('secondary'); }
+        }
+        const outputHeaders=new Headers(response.headers);outputHeaders.delete('Content-Length');outputHeaders.delete('Content-Encoding');outputHeaders.set('Cache-Control','no-store');outputHeaders.set('Content-Type','application/json');
+        return new Response(JSON.stringify({...data,unavailableNodes}),{headers:outputHeaders});
+      }
       // Optional PC portal: normal Teldrive sign-in still applies. The edge
       // secret is added server-side and never sent to the browser.
       if (env.MEDIA_NODE_ADMIN === 'true' && url.origin === env.MEDIA_NODE_PORTAL_ORIGIN) {

@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import { id, now, expires, expired, fail, CryptoBox, Locks, hash } from './core.mjs';
 import { SecureBlob } from './secureblob.mjs';
 import { hostname } from 'node:os';
+import { traceTransfer, recordTransferInput, recordTransferForwarded } from './playback-diagnostics.mjs';
 const require = createRequire(import.meta.url);
 const { TelegramClient, Api } = require('teleproto');
 const { StringSession } = require('teleproto/sessions');
@@ -80,7 +81,9 @@ export class Telegram {
     const records = this.store.list('bot-state', userId), states = new Map(records.map(state => [state.id, state]));
     const assignments = new Map(records.filter(record => record.kind === 'bot-channels').map(record => [record.botId, record.channelIds]));
     let bots = this.store.list('bots', userId).filter(b => b.enabled && !(Date.parse(states.get(this.botStateId(b))?.retryAfter || '') > Date.now()));
-    bots = bots.filter(bot => !assignments.has(bot.id) || channelIds.every(channel => assignments.get(bot.id).includes(String(channel))));
+    const profiles = new Map(records.filter(record => record.kind === 'bot-profile').map(record => [record.botId, record]));
+    bots = bots.filter(bot => !assignments.has(bot.id) || channelIds.every(channel => assignments.get(bot.id).includes(String(channel))))
+      .map(bot => ({ ...bot, name: profiles.get(bot.id)?.name || bot.name, username: profiles.get(bot.id)?.username || bot.username }));
     if (operation === 'download') bots = bots.slice(0, this.config.downloadBots ?? 20);
     if (!bots.length) return [];
     const key = `${userId}:${operation}`, index = this.rotation.get(key) || 0; this.rotation.set(key, (index + 1) % bots.length);
@@ -147,7 +150,7 @@ export class Telegram {
   async withTransfer(userId, operation, fn, signal, channelIds = []) {
     for (const bot of this.eligibleBots(userId, operation, channelIds)) {
       if (signal?.aborted) return;
-      try { return await this.withBot(bot, fn); }
+      try { return await traceTransfer({ kind: 'bot', id: bot.id, name: bot.name, username: bot.username }, () => this.withBot(bot, fn)); }
       catch (error) {
         if (signal?.aborted) return;
         // Channel-specific failures must not disable a shared bot in the Go app.
@@ -156,7 +159,7 @@ export class Telegram {
         state.lastError = 'telegram_bot_unavailable'; this.store.put('bot-state', state);
       }
     }
-    if (!signal?.aborted) return this.withClient(userId, fn);
+    if (!signal?.aborted) return traceTransfer({ kind: 'account' }, () => this.withClient(userId, fn));
   }
   async addBots(userId, tokens) {
     if (!Array.isArray(tokens) || !tokens.length || tokens.length > 200 || tokens.some(t => typeof t !== 'string' || !/^[1-9][0-9]{4,19}:[A-Za-z0-9_-]{20,100}$/.test(t))) fail(422, 'invalid_bot_tokens');
@@ -319,9 +322,10 @@ export class Telegram {
       let skip = start - aligned, remaining = length - delivered;
       for await (const bytes of client.iterDownload(message, { offset: aligned, limit: skip + remaining, requestSize, signal })) {
         if (signal?.aborted) break;
+        recordTransferInput(bytes.length);
         const discard = Math.min(skip, bytes.length); skip -= discard;
         const chunk = bytes.subarray(discard, discard + remaining); remaining -= chunk.length;
-        if (chunk.length) { await write(chunk); delivered += chunk.length; }
+        if (chunk.length) { await write(chunk); delivered += chunk.length; recordTransferForwarded(chunk.length); }
         if (!remaining) break;
       }
       if (remaining && !signal?.aborted) fail(503, 'telegram_part_truncated');

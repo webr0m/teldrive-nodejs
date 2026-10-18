@@ -33,6 +33,11 @@ test('real media probe and conversion select video and audio streams through aut
     const converted=path.join(directory,'converted.mp4'); await writeFile(converted,Buffer.from(await stream.arrayBuffer()));
     const inspected=spawnSync(ffprobe,['-v','error','-show_streams','-of','json',converted],{windowsHide:true}); assert.equal(inspected.status,0);
     const output=JSON.parse(inspected.stdout).streams;
+    const diagnostics=await(await fetch(`${c.publicUrl}/api/v1/playback/diagnostics?ticket=${grant.ticket}`,{headers:{Cookie:cookie}})).json();
+    const conversion=diagnostics.nodes[0].streams.find(s=>s.mode==='video');
+    assert.equal(conversion.conversion.video,'copy');assert.equal(typeof conversion.conversion.speed,'number');
+    assert.ok(diagnostics.nodes[0].streams.some(s=>s.purpose==='probe'));assert.ok(diagnostics.nodes[0].streams.some(s=>s.purpose==='conversion-input'));
+    assert.ok(diagnostics.nodes[0].inputBytes>0);assert.ok(diagnostics.nodes[0].outputBytes>0);assert.equal(diagnostics.metadata.tracks.length,4);assert.ok(!JSON.stringify(diagnostics).includes(grant.ticket));
     assert.equal(output.find(s=>s.codec_type==='video').width,96); assert.equal(output.find(s=>s.codec_type==='video').height,64); assert.equal(output.find(s=>s.codec_type==='audio').sample_rate,'48000');
     const packetHashes = (filename, stream) => JSON.parse(spawnSync(ffprobe,['-v','error','-select_streams',stream,'-show_packets','-show_data_hash','sha256','-show_entries','packet=data_hash','-of','json',filename],{windowsHide:true}).stdout).packets.map(p=>p.data_hash);
     assert.deepEqual(packetHashes(converted,'v:0'),packetHashes(filename,'v:1'),'compatible H.264 packets are preserved without CPU-heavy re-encoding');

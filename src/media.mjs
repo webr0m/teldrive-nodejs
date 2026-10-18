@@ -5,12 +5,31 @@ import path from 'node:path';
 import { rootCertificates } from 'node:tls';
 import { once } from 'node:events';
 import { fail, Semaphore } from './core.mjs';
+import { recordPlaybackOutput, conversionObserver } from './playback-diagnostics.mjs';
 const require = createRequire(import.meta.url);
 // Uploaded playlists must not make FFmpeg open local files or arbitrary URLs.
 const inputOptions = ['-protocol_whitelist','http,https,tcp,tls,crypto','-format_whitelist','matroska,webm,mov,mp4,m4a,3gp,3g2,mj2,avi,mp3,aac,flac,ogg,wav,asf,mpeg,mpegts,flv'];
 
 export function mediaTracks(data) {
-  return (data.streams || []).filter(s => ['video','audio','subtitle'].includes(s.codec_type)).map(s => ({ index: s.index, kind: s.codec_type, codec: s.codec_name || 'unknown', language: s.tags?.language || 'und', title: s.tags?.title || '', default: !!s.disposition?.default, bitmap: ['dvd_subtitle','dvb_subtitle','hdmv_pgs_subtitle','xsub'].includes(s.codec_name) }));
+  return (data.streams || []).filter(s => ['video','audio','subtitle'].includes(s.codec_type)).map(s => ({ index: s.index, kind: s.codec_type, codec: s.codec_name || 'unknown', language: s.tags?.language || 'und', title: s.tags?.title?.slice(0,256) || '', default: !!s.disposition?.default, bitmap: ['dvd_subtitle','dvb_subtitle','hdmv_pgs_subtitle','xsub'].includes(s.codec_name),
+    ...Object.fromEntries(['width','height','channels','sample_rate','bit_rate','duration','bits_per_raw_sample'].filter(key=>Number.isFinite(Number(s[key])) && s[key] !== undefined).map(key=>[key,Number(s[key])])),
+    ...Object.fromEntries(['profile','pix_fmt','avg_frame_rate','channel_layout','color_space','color_transfer','color_primaries','field_order'].filter(key=>typeof s[key]==='string').map(key=>[key,s[key].slice(0,128)])) }));
+}
+export function mediaFormat(data) {
+  const f=data.format||{};
+  return { name: typeof f.format_name==='string'?f.format_name.slice(0,128):undefined,
+    ...Object.fromEntries(['duration','bit_rate'].filter(key=>Number.isFinite(Number(f[key])) && f[key]!==undefined).map(key=>[key,Number(f[key])])) };
+}
+export function progressParser(update) {
+  let pending='';const state={};
+  return chunk=>{
+    pending=(pending+chunk.toString()).slice(-8192);const lines=pending.split(/\r?\n/);pending=lines.pop();
+    for(const line of lines){const match=/^(fps|speed|out_time_us|total_size|drop_frames|dup_frames|progress)=(.*)$/.exec(line);if(!match)continue;
+      const [,key,value]=match;
+      if(key==='progress'){update({...state,finished:value==='end'});continue;}
+      const n=Number(key==='speed'?value.replace(/x$/,''):value);if(Number.isFinite(n)&&n>=0)state[key]=n;
+    }
+  };
 }
 export class Media {
   constructor(config, playback, overrides = {}) {
@@ -21,19 +40,19 @@ export class Media {
     this.transfers = new Semaphore(config.mediaConcurrency ?? 1); this.cache = new Map(); this.probes = new Map();
   }
   available() { return this.config.mediaEnabled === true && !!this.ffmpeg && existsSync(this.ffmpeg); }
-  source(ticket) { const origin = this.config.mediaNode ? `http://${this.config.host === '::1' ? '[::1]' : '127.0.0.1'}:${this.config.port}` : this.config.publicUrl; const url = new URL('/api/v1/playback', origin); url.search = new URLSearchParams({ ticket, mode: 'original' }).toString(); return url.href; }
+  source(ticket, purpose = 'conversion-input') { const origin = this.config.mediaNode ? `http://${this.config.host === '::1' ? '[::1]' : '127.0.0.1'}:${this.config.port}` : this.config.publicUrl; const url = new URL('/api/v1/playback', origin); url.search = new URLSearchParams({ ticket, mode: 'original', purpose }).toString(); return url.href; }
   inputOptions() { return [...inputOptions,...(this.config.mediaNode ? ['-headers', `X-Teldrive-Media-Node: ${this.config.mediaNodeSecret}\r\n`] : this.config.publicUrl.startsWith('https:') ? ['-tls_verify','1','-ca_file',this.caFile] : [])]; }
   async tracks(ticket) {
     const { file } = this.playback.resolve(ticket), key = `${file.id}:${file.generation}`;
     if (!this.config.mediaEnabled || !this.ffprobe || !existsSync(this.ffprobe)) return { available: false, tracks: [] };
-    const cached = this.cache.get(key); if (cached) return { available: true, tracks: cached.tracks };
+    const cached = this.cache.get(key); if (cached) return { available: true, tracks: cached.tracks, format: cached.format };
     if (this.probes.has(key)) return this.probes.get(key);
     this.transfers.max = this.config.mediaConcurrency ?? 1;
     const pending = this.transfers.run(async () => {
-      const stdout = await this.collect(this.ffprobe, ['-v','error',...this.inputOptions(),'-rw_timeout','30000000','-probesize',String(this.config.mediaProbeBytes ?? 8388608),'-analyzeduration',String((this.config.mediaAnalyzeSeconds ?? 1)*1000000),'-show_streams','-of','json',this.source(ticket)], this.config.mediaProbeTimeoutSeconds ?? 60);
-      let tracks, copyVideo; try { const data = JSON.parse(stdout); tracks = mediaTracks(data); copyVideo = (data.streams || []).filter(s => s.codec_name === 'h264' && ['yuv420p','yuvj420p'].includes(s.pix_fmt)).map(s => s.index); } catch { fail(503,'media_probe_failed'); }
+      const stdout = await this.collect(this.ffprobe, ['-v','error',...this.inputOptions(),'-rw_timeout','30000000','-probesize',String(this.config.mediaProbeBytes ?? 8388608),'-analyzeduration',String((this.config.mediaAnalyzeSeconds ?? 1)*1000000),'-show_streams','-show_format','-of','json',this.source(ticket,'probe')], this.config.mediaProbeTimeoutSeconds ?? 60);
+      let tracks, copyVideo, format; try { const data = JSON.parse(stdout); tracks = mediaTracks(data); format=mediaFormat(data); copyVideo = (data.streams || []).filter(s => s.codec_name === 'h264' && ['yuv420p','yuvj420p'].includes(s.pix_fmt)).map(s => s.index); } catch { fail(503,'media_probe_failed'); }
       if (this.cache.size >= 200) this.cache.delete(this.cache.keys().next().value);
-      this.cache.set(key, { tracks, copyVideo }); return { available: true, tracks };
+      this.cache.set(key, { tracks, copyVideo, format }); return { available: true, tracks, format };
     });
     this.probes.set(key, pending);
     try { return await pending; } finally { this.probes.delete(key); }
@@ -68,6 +87,7 @@ export class Media {
     const { file } = this.playback.consume(secret);
     const selectedVideo = video ?? tracks.find(t => t.kind === 'video')?.index;
     const copyVideo = this.config.mediaCopyVideo !== 0 && this.cache.get(`${file.id}:${file.generation}`)?.copyVideo.includes(selectedVideo);
+    conversionObserver()({ video: mode === 'audio' ? 'none' : copyVideo ? 'copy' : 'h264', audio: mode === 'audio' ? 'mp3' : 'aac', maxWidth: this.config.mediaMaxWidth ?? 1920, threads: this.config.mediaThreads ?? 1 });
     this.transfers.max = this.config.mediaConcurrency ?? 1;
     return this.transfers.run(async () => {
       const args = ['-hide_banner','-loglevel','error','-nostdin','-threads',String(this.config.mediaThreads ?? 1),...this.inputOptions(),'-rw_timeout','30000000','-probesize',String(this.config.mediaProbeBytes ?? 8388608),'-analyzeduration',String((this.config.mediaAnalyzeSeconds ?? 1)*1000000),...(start ? ['-ss',String(start)] : []),'-i',this.source(secret)];
@@ -81,18 +101,19 @@ export class Media {
     if (track === undefined || tracks.find(t=>t.index===track)?.bitmap || !Number.isFinite(start) || start < 0 || start > 86400) fail(422,'invalid_subtitle_track');
     if (!this.available()) fail(503,'media_conversion_unavailable');
     this.playback.consume(secret);
-    return this.transfers.run(()=>this.pipe(c,['-hide_banner','-loglevel','error','-nostdin',...this.inputOptions(),'-rw_timeout','30000000',...(start ? ['-ss',String(start)] : []),'-i',this.source(secret),'-map',`0:${track}`,'-vn','-an','-c:s','webvtt','-f','webvtt','pipe:1'],'text/vtt; charset=utf-8',60));
+    return this.transfers.run(()=>this.pipe(c,['-hide_banner','-loglevel','error','-nostdin',...this.inputOptions(),'-rw_timeout','30000000',...(start ? ['-ss',String(start)] : []),'-i',this.source(secret,'subtitle-input'),'-map',`0:${track}`,'-vn','-an','-c:s','webvtt','-f','webvtt','pipe:1'],'text/vtt; charset=utf-8',60));
   }
   async pipe(c, args, mime, timeout = this.config.mediaTimeoutSeconds ?? 7200) {
-    const child = this.spawn(this.ffmpeg,args,{ windowsHide:true,stdio:['ignore','pipe','pipe'] });
-    let diagnostic = ''; child.stderr.on('data', b => { if (diagnostic.length < 4096) diagnostic += b.toString(); });
+    const child = this.spawn(this.ffmpeg,['-progress','pipe:2','-nostats',...args],{ windowsHide:true,stdio:['ignore','pipe','pipe'] });
+    const progress=progressParser(conversionObserver());
+    let diagnostic = ''; child.stderr.on('data', b => { progress(b); if (diagnostic.length < 4096) diagnostic += b.toString(); });
     const controller = new AbortController();
     const stop = ()=>{ controller.abort(); child.kill('SIGKILL'); }, timer=setTimeout(stop,timeout*1000).unref(); c.res.once('close',stop);
     let bytes = 0;
     try {
       const completion = once(child,'close'); completion.catch(()=>{});
       c.res.setHeader('Content-Type',mime); c.res.setHeader('Accept-Ranges','none');
-      for await (const chunk of child.stdout) { if(c.res.destroyed) break; bytes+=chunk.length; if(!c.res.write(chunk)) await once(c.res,'drain',{signal:controller.signal}); }
+      for await (const chunk of child.stdout) { if(c.res.destroyed) break; bytes+=chunk.length; const ready=c.res.write(chunk);recordPlaybackOutput(chunk.length);if(!ready) await once(c.res,'drain',{signal:controller.signal}); }
       const [code]=await completion; if(c.res.destroyed) return;
       if(code!==0 || !bytes) {
         console.error(JSON.stringify({event:'media_conversion_failed',code,bytes,reasons:['403','404','429','TLS','certificate','timed out','Cannot allocate memory','Resource temporarily unavailable','Permission denied','Invalid data','End of file'].filter(label=>diagnostic.includes(label))}));
