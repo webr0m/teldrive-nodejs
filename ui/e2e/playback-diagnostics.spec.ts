@@ -101,11 +101,7 @@ async function setup(page: Page, denied = false) {
     route.fulfill({ contentType: "audio/wav", body: wave() }),
   );
   await page.goto("/files?view=list&client=mobile");
-  await page
-    .getByRole("row", { name: /prueba.wav/ })
-    .locator('[data-slot="checkbox-control"]')
-    .click();
-  await page.getByRole("button", { name: "Vista previa", exact: true }).click();
+  await page.getByRole("row", { name: /prueba.wav/ }).dblclick();
   await expect(page.getByRole("dialog").locator("audio")).toBeVisible();
   return () => polls;
 }
