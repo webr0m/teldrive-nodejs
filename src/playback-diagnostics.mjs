@@ -59,10 +59,11 @@ export class PlaybackDiagnostics {
     if (!session) return node;
     node.streams = [...session.streams.values()].map(s => ({ id: s.id, mode: s.mode, purpose: s.purpose, state: s.state, startedAt: s.startedAt,
       finishedAt: s.finishedAt, firstByteMs: s.firstByteAt === undefined ? undefined : s.firstByteAt - s.startedAt,
-      rangeStart: s.rangeStart, rangeEnd: s.rangeEnd, outputBytes: s.outputBytes, bytesPerSecond: rate(s, now), sourceIds: [...s.sources], conversion: s.conversion }));
+      rangeStart: s.rangeStart, rangeEnd: s.rangeEnd, outputBytes: s.outputBytes, bytesPerSecond: rate(s, now), sourceIds: [...s.sources], conversion: s.conversion,
+      activeReads: s.activeReads || 0, peakReads: s.peakReads || 0, reader: s.reader }));
     node.sources = [...session.sources.values()].map(s => ({ id: s.id, kind: s.kind, botId: s.botId, name: s.name, username: s.username,
       active: s.active, attempts: s.attempts, failures: s.failures, inputBytes: s.inputBytes, forwardedBytes: s.forwardedBytes,
-      bytesPerSecond: rate(s, now), lastByteAt: s.lastByteAt }));
+      bytesPerSecond: rate(s, now), lastByteAt: s.lastByteAt, activeReads: s.activeReads || 0, peakReads: s.peakReads || 0 }));
     return node;
   }
 }
@@ -98,4 +99,11 @@ export function recordTransferForwarded(bytes) { const current = scope.getStore(
 export function conversionObserver() {
   const current = scope.getStore();
   return values => { if (current) current.stream.conversion = { ...current.stream.conversion, ...values }; };
+}
+export function configureDownload(reader) { const current=scope.getStore();if(current)current.stream.reader=reader; }
+export async function traceDownloadRead(fn) {
+  const current=scope.getStore();if(!current)return fn();
+  const targets=[current.stream,current.source].filter(Boolean);
+  for(const target of targets){target.activeReads=(target.activeReads||0)+1;target.peakReads=Math.max(target.peakReads||0,target.activeReads);}
+  try{return await fn();}finally{for(const target of targets)target.activeReads--;}
 }

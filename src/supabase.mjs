@@ -1,13 +1,17 @@
 import { Worker } from 'node:worker_threads';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { PostgresStore } from './postgres.mjs';
 import { fail } from './core.mjs';
 const revision = Symbol('databaseRevision');
+class MissingRead { constructor(request, key) { this.request = request; this.key = key; } }
+const unavailable = () => Object.assign(new Error('Supabase unavailable'), { status: 503, code: 'supabase_unavailable' });
 
 // A transaction is sent as one restricted RPC batch. The read overlay provides
 // read-your-writes semantics without holding a PostgreSQL transaction across HTTP requests.
 export class SupabaseStore {
   constructor(config, overrides = {}) {
     this.config = config; this.overrides = overrides; this.timeoutMs = overrides.timeoutMs ?? 30000; config.databaseLayout = 'v2';
+    this.readScopes = new AsyncLocalStorage(); this.asyncCalls = new Map(); this.nextAsyncId = 0;
     if (overrides.rpc) this.rpc = overrides.rpc;
     else {
       this.startWorker();
@@ -16,12 +20,59 @@ export class SupabaseStore {
   }
   startWorker() {
     // A late response from a timed-out worker must never overwrite the next call.
-    this.worker?.terminate(); this.failed = false;
+    this.rejectAsync(); this.worker?.terminate(); this.failed = false;
     this.control = new SharedArrayBuffer(8); this.output = new SharedArrayBuffer(32 * 1024 ** 2);
     const worker = this.overrides.workerFactory ? this.overrides.workerFactory() : new Worker(new URL('./supabase-worker.mjs', import.meta.url), { execArgv: [], workerData: { url: this.config.supabaseUrl, key: this.config.supabaseKey } });
     this.worker = worker; worker.unref();
-    worker.on('error',()=>{if(this.worker===worker)this.failed=true;});
-    worker.on('exit',()=>{if(this.worker===worker)this.failed=true;});
+    worker.on('error',()=>{if(this.worker===worker){this.failed=true;this.rejectAsync();}});
+    worker.on('exit',()=>{if(this.worker===worker){this.failed=true;this.rejectAsync();}});
+    worker.on('message',({asyncId,result})=>{
+      if(this.worker!==worker)return;
+      const call=this.asyncCalls.get(asyncId);if(!call)return;
+      this.asyncCalls.delete(asyncId);clearTimeout(call.timer);
+      if(result.error)call.reject(Object.assign(unavailable(),result.error));else call.resolve(result.value);
+    });
+  }
+  rejectAsync() { for(const call of this.asyncCalls.values()){clearTimeout(call.timer);call.reject(unavailable());}this.asyncCalls.clear(); }
+  rpcAsync(request) {
+    if(this.closed)return Promise.reject(unavailable());
+    if(this.overrides.rpcAsync)return this.overrides.rpcAsync(request);
+    if(this.overrides.rpc)return Promise.resolve().then(()=>this.rpc(request));
+    if(this.failed)this.startWorker();
+    if(this.asyncCalls.size>=256)return Promise.reject(unavailable());
+    return new Promise((resolve,reject)=>{
+      const asyncId=++this.nextAsyncId;
+      const timer=setTimeout(()=>{this.asyncCalls.delete(asyncId);reject(unavailable());},this.timeoutMs);
+      this.asyncCalls.set(asyncId,{resolve,reject,timer});
+      try{this.worker.postMessage({request,asyncId});}catch{clearTimeout(timer);this.asyncCalls.delete(asyncId);reject(unavailable());}
+    });
+  }
+  readScope(fn) {
+    const scope={cache:new Map(),prefetch:false,closed:false};
+    const close=()=>{scope.closed=true;scope.cache.clear();};
+    try{const value=this.readScopes.run(scope,fn);if(value?.then)return value.finally(close);close();return value;}
+    catch(error){close();throw error;}
+  }
+  read(request) {
+    const scope=this.readScopes.getStore();if(!scope||scope.closed)return this.rpc(request);
+    const key=JSON.stringify(request);
+    if(scope.cache.has(key))return structuredClone(scope.cache.get(key));
+    if(scope.prefetch)throw new MissingRead(request,key);
+    const value=this.rpc(request);scope.cache.set(key,structuredClone(value));return value;
+  }
+  // Only explicitly read-only, synchronous computations may be replayed to hydrate
+  // their missing records asynchronously. No cross-request authorization cache.
+  async readAsync(fn) {
+    const scope=this.readScopes.getStore();if(!scope||scope.closed)return this.readScope(()=>this.readAsync(fn));
+    for(let n=0;n<256;n++){
+      let missing;
+      scope.prefetch=true;
+      try{const result=fn();if(result?.then)throw new Error('Read computation must be synchronous');return result;}
+      catch(error){if(!(error instanceof MissingRead))throw error;missing=error;}
+      finally{scope.prefetch=false;}
+      scope.cache.set(missing.key,structuredClone(await this.rpcAsync(missing.request)));
+    }
+    throw unavailable();
   }
   rpc(request) {
     if (this.closed) fail(503,'supabase_unavailable');
@@ -46,13 +97,13 @@ export class SupabaseStore {
   get(bucket, key) {
     const pending = this.pending?.findLast(op => op.bucket === bucket && op.id === String(key));
     if (pending) return pending.action === 'delete' ? undefined : structuredCopy(pending.value);
-    const row = this.rpc({ action: 'get', bucket, id: String(key) }).items[0];
+    const row = this.read({ action: 'get', bucket, id: String(key) }).items[0];
     return row && this.map(bucket, row);
   }
   list(bucket, owner) {
     const cacheKey = `${bucket}:${owner ?? '*'}`;
     let rows = this.readCache?.get(cacheKey);
-    if (!rows) { rows = this.rpc({ action: 'list', bucket, owner: owner === undefined ? null : String(owner) }).items.map(row => this.map(bucket, row)); this.readCache?.set(cacheKey, rows); }
+    if (!rows) { rows = this.read({ action: 'list', bucket, owner: owner === undefined ? null : String(owner) }).items.map(row => this.map(bucket, row)); this.readCache?.set(cacheKey, rows); }
     const values = new Map(rows.map(value => [bucket === 'channels' ? `${value.ownerId}:${value.id}` : value.id, structuredCopy(value)]));
     for (const op of this.pending || []) {
       if (op.bucket !== bucket) continue;
@@ -63,6 +114,8 @@ export class SupabaseStore {
     return [...values.values()];
   }
   put(bucket, value) {
+    if(this.readScopes.getStore()?.prefetch)throw new Error('Read computation cannot write');
+    this.readScopes.getStore()?.cache.clear();
     if (!this.pending) return this.transaction(() => this.put(bucket, value));
     const previous = this.pending.find(op => op.action === 'put' && op.bucket === bucket && op.id === String(value.id) && (bucket !== 'channels' || op.owner === String(value.ownerId)));
     if (previous) { previous.value = structuredCopy(value); return value; }
@@ -70,6 +123,8 @@ export class SupabaseStore {
     return value;
   }
   delete(bucket, key, owner, generation) {
+    if(this.readScopes.getStore()?.prefetch)throw new Error('Read computation cannot write');
+    this.readScopes.getStore()?.cache.clear();
     if (!this.pending) return this.transaction(() => this.delete(bucket, key, owner, generation));
     this.pending.push({ action: 'delete', bucket, id: String(key), owner: owner === undefined ? null : String(owner), expectedGeneration: generation });
   }
@@ -79,7 +134,7 @@ export class SupabaseStore {
     try { const value = fn(); if (value?.then) throw new Error('Store transactions must be synchronous'); if (this.pending.length) this.rpc({ action: 'commit', operations: this.pending }); return value; }
     finally { this.pending = undefined; this.readCache = undefined; }
   }
-  close() { this.closed = true; this.worker?.terminate(); }
+  close() { this.closed = true; this.rejectAsync(); this.worker?.terminate(); }
 }
 function structuredCopy(value) {
   // Preserve the non-JSON revision marker used for optimistic concurrency.

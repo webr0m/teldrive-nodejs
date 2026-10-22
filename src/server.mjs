@@ -41,6 +41,9 @@ function route(method, pattern, handler, { public: open = false, raw = false, ti
 }
 const result = (body, status = 200, headers = {}) => ({ body, status, headers });
 const empty = () => result(undefined, 204);
+// Explicitly pure handlers: replaying a handler that writes or starts I/O is unsafe.
+const asynchronousReadRoutes = new Set(['/api/v1/playback/diagnostics', '/api/v1/files', '/api/v1/files/:fileId',
+  '/api/v1/files/statistics/drive', '/api/v1/files/statistics/categories', '/api/v1/files/:fileId/view-state']);
 const admin = user => { if (!['owner', 'admin'].includes(user.role)) fail(403, 'administrator_required'); };
 const owner = c => requireOwner(c.user, c.config);
 const configurationOwner = c => {
@@ -363,7 +366,8 @@ export function createApp(config, overrides = {}) {
     context.mobile = new Mobile(config, auth, overrides.mobile);
   }
   const cleanupTimer = context && !config.mediaNode ? setInterval(() => { void context.uploads.drainCleanup().catch(() => {}); context.mobile.prune(); }, 60000).unref() : undefined;
-  const server = http.createServer(async (req, res) => {
+  const server = http.createServer((req, res) => {
+    const handle = async () => {
     const requestId = id(); res.setHeader('X-Request-Id', requestId); res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('Cache-Control', 'no-store');
     if (!config.allowIframe) res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     try {
@@ -389,7 +393,15 @@ export function createApp(config, overrides = {}) {
       if (found) {
         const match = found.regex.exec(url.pathname), params = {};
         for (let i = 0; i < found.params.length; i++) { try { params[found.params[i]] = decodeURIComponent(match[i + 1]); } catch { fail(400, 'invalid_path_encoding'); } }
-        const principal = found.open ? {} : context.auth.authenticate(req, url.searchParams, found.ticket);
+        const authenticate = () => context.auth.authenticate(req, url.searchParams, found.ticket);
+        const principal = found.open ? {} : context.store.readAsync && !req.headers['x-api-key']
+          ? await context.store.readAsync(authenticate) : authenticate();
+        if(context.store.readAsync && req.method==='GET' && /^\/api\/v1\/playback(?:\/(?:tracks|subtitles|diagnostics))?$/.test(url.pathname)) {
+          const {file}=await context.store.readAsync(()=>context.playback.resolve(url.searchParams.get('ticket')));
+          if(url.pathname==='/api/v1/playback' && ['original',null].includes(url.searchParams.get('mode')))await context.store.readAsync(()=>{
+            context.store.list('bots',file.ownerId);context.store.list('bot-state',file.ownerId);
+          });
+        }
         if (mobileOrigin && !found.open && principal.session?.scope !== 'client') fail(403, 'client_session_required');
         if (req.headers['x-teldrive-client'] === 'mobile' && principal.user) principal.user = { ...principal.user, role: 'user', clientOnly: true };
         assertClientAccess(principal, req.method, url.pathname);
@@ -407,7 +419,8 @@ export function createApp(config, overrides = {}) {
           context.store.put('idempotency-pending', { id: key, expiresAt: expires(3600000) });
           try { const response = await found.handler(c); if (response?.status < 400) context.store.put('idempotency', { id: key, userId: c.user.id, fingerprint, response }); send(res, response); }
           finally { context.store.delete('idempotency-pending', key); }
-        } else send(res, await found.handler(c));
+        } else send(res, req.method==='GET' && asynchronousReadRoutes.has(found.pattern) && context.store.readAsync
+          ? await context.store.readAsync(()=>found.handler(c)) : await found.handler(c));
         return;
       }
       if (url.pathname.startsWith('/api/')) fail(501, 'operation_not_available', 'Esta función todavía no está disponible en este servidor.');
@@ -439,6 +452,8 @@ export function createApp(config, overrides = {}) {
       if (!known) console.error(JSON.stringify({ level: 'error', event: 'request_failed', requestId, errorType: error.constructor.name }));
       send(res, result({ error: { code: known ? error.code || 'request_failed' : 'internal_error', message: known ? error.message : 'Request failed', details: { requestId } } }, known ? error.status : 500));
     }
+    };
+    return context?.store?.readScope ? context.store.readScope(handle) : handle();
   });
   server.requestTimeout = 3600000; server.headersTimeout = 60000; server.keepAliveTimeout = 5000;
   if (proxy) server.on('upgrade', proxy.upgrade);

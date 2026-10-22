@@ -92,6 +92,7 @@ test('unaligned range resumes after partial bot failure without duplicating byte
   const { telegram: t } = fixture(), data = randomBytes(2 * 512 * 1024 + 100), chunks = [], calls = [];
   const client = (broken) => ({ async *iterDownload(_message, params) {
     calls.push(params.offset); assert.equal(params.offset % (512*1024),0);
+    if (broken && params.offset >= 512*1024) throw new Error('connection lost');
     yield data.subarray(params.offset, params.offset+512*1024);
     if (broken) throw new Error('connection lost');
     yield data.subarray(params.offset+512*1024);
@@ -100,5 +101,5 @@ test('unaligned range resumes after partial bot failure without duplicating byte
   t.withBot = async (_bot, fn) => { const broken = first; first=false; return fn(client(broken)); };
   t.withClient = async (_owner, fn) => fn(client(false));
   await t.read('7', {}, 123, 800000, bytes => { chunks.push(bytes); });
-  assert.deepEqual(Buffer.concat(chunks), data.subarray(123,800123)); assert.deepEqual(calls, [0,512*1024]);
+  assert.deepEqual(Buffer.concat(chunks), data.subarray(123,800123)); assert.deepEqual(calls, [0,512*1024,512*1024]);
 });

@@ -31,7 +31,7 @@ test('real Telegram read retries attribute received data to the actual bot and r
   f.telegram.config.downloadBots=20;f.telegram.config.botAttempts=2;
   const data=randomBytes(512*1024+200),chunks=[];
   f.telegram.message=async()=>({message:{}});
-  f.telegram.withBot=async(bot,fn)=>fn({async *iterDownload(_message,p){yield data.subarray(p.offset,p.offset+512*1024);if(bot.id==='10001')throw new Error('read failed');yield data.subarray(p.offset+512*1024);}});
+  f.telegram.withBot=async(bot,fn)=>fn({async *iterDownload(_message,p){if(bot.id==='10001'&&p.offset>=512*1024)throw new Error('read failed');yield data.subarray(p.offset,p.offset+512*1024);yield data.subarray(p.offset+512*1024);}});
   await stats.run('ticket',{mode:'original'},()=>f.telegram.read('7',{channelId:'99'},3,data.length-3,async chunk=>{chunks.push(chunk);recordPlaybackOutput(chunk.length)}));
   assert.deepEqual(Buffer.concat(chunks),data.subarray(3));
   const result=stats.snapshot('ticket');assert.deepEqual(result.sources.map(s=>s.botId),['10001','10002']);assert.equal(result.sources[0].failures,1);assert.equal(result.sources[1].failures,0);assert.equal(result.outputBytes,data.length-3);assert.ok(result.inputBytes>result.outputBytes);assert.equal(result.streams[0].sourceIds.length,2);

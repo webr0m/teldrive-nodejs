@@ -1910,6 +1910,13 @@ export interface components {
                     outputBytes: number;
                     bytesPerSecond: number;
                     sourceIds: string[];
+                    activeReads?: number;
+                    peakReads?: number;
+                    reader?: {
+                        parallel: number;
+                        buffers: number;
+                        globalLimit: number;
+                    };
                     conversion?: {
                         [key: string]: string | number | boolean;
                     };
@@ -1928,6 +1935,8 @@ export interface components {
                     forwardedBytes: number;
                     bytesPerSecond: number;
                     lastByteAt?: number;
+                    activeReads?: number;
+                    peakReads?: number;
                 }[];
             }[];
         };

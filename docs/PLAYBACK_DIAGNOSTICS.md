@@ -1,5 +1,7 @@
 # Estadísticas del reproductor
 
+El panel distingue los flujos HTTP de las **lecturas RPC activas / pico**: estas últimas cuentan las peticiones efectivas de bloques a Telegram. En las solicitudes recientes también muestra el paralelismo configurado, los bloques anticipados y el límite global. Véase [la auditoría de concurrencia](CONCURRENCY_AUDIT.md).
+
 En vídeo y audio, **Estadísticas · Desarrollador** abre un panel opcional. Muestra información disponible del contenedor y las pistas; resolución decodificada, posición, búfer, estado de red, fotogramas y esperas observadas; solicitudes Range, primer byte, orígenes y bots por nombre, alias e ID; lectura recibida y bytes enviados; y progreso de FFmpeg cuando se usa conversión.
 
 Los datos del navegador se muestrean cada segundo mientras el panel está abierto. Las consultas del servidor se realizan cada dos segundos después de completar la anterior; se suspenden con la página oculta y al cerrar el panel. Las velocidades son medias de los últimos tres segundos, no el bitrate declarado del archivo. Los campos que el navegador o ffprobe no proporcionan se muestran como no disponibles.

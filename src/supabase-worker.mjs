@@ -18,8 +18,7 @@ async function requestRpc(request) {
     req.on('timeout', () => req.destroy(new Error('request_timeout'))); req.on('error', reject); req.end(body);
   });
 }
-parentPort.on('message', async ({ request, control, output }) => {
-  const flags = new Int32Array(control), buffer = new Uint8Array(output);
+parentPort.on('message', async ({ request, control, output, asyncId }) => {
   let result;
   try {
     const { status, body } = await requestRpc(request);
@@ -29,6 +28,8 @@ parentPort.on('message', async ({ request, control, output }) => {
       result = { error: { status: conflict ? 409 : 503, code: body.message === 'generation_changed' ? 'generation_changed' : conflict ? 'name_conflict' : 'supabase_unavailable' } };
     } else result = { value: body };
   } catch (error) { console.error(JSON.stringify({ event: 'supabase_transport_failed', type: error.name, code: error.code })); result = { error: { status: 503, code: 'supabase_unavailable' } }; }
+  if(asyncId!==undefined){parentPort.postMessage({asyncId,result});return;}
+  const flags = new Int32Array(control), buffer = new Uint8Array(output);
   let bytes = Buffer.from(JSON.stringify(result));
   if (bytes.length > buffer.length) bytes = Buffer.from(JSON.stringify({ error: { status: 503, code: 'supabase_result_too_large' } }));
   buffer.set(bytes); Atomics.store(flags, 1, bytes.length); Atomics.store(flags, 0, 1); Atomics.notify(flags, 0);

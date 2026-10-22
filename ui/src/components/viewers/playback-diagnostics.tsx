@@ -45,6 +45,9 @@ type Conversion = {
   finished?: boolean;
 };
 type Flow = {
+  activeReads?: number;
+  peakReads?: number;
+  reader?: { parallel: number; buffers: number; globalLimit: number };
   id: string;
   mode: string;
   purpose: string;
@@ -60,6 +63,8 @@ type Flow = {
   conversion?: Conversion;
 };
 type Source = {
+  activeReads?: number;
+  peakReads?: number;
   id: string;
   kind: string;
   botId?: string;
@@ -533,6 +538,7 @@ export function PlaybackDiagnostics({
                       s.active ? `${s.active} flujos activos` : "Sin flujo activo",
                     ],
                     ["Velocidad recibida", speed(s.bytesPerSecond)],
+                    ["Lecturas RPC activas / pico", `${s.activeReads ?? 0} / ${s.peakReads ?? 0}`],
                     ["Bytes recibidos", bytes(s.inputBytes)],
                     ["Bytes útiles de las lecturas", bytes(s.forwardedBytes)],
                     ["Intentos / fallos", `${s.attempts} / ${s.failures}`],
@@ -562,6 +568,17 @@ export function PlaybackDiagnostics({
                           values={[
                             ["Bytes de salida", bytes(flow.outputBytes)],
                             ["Velocidad de salida", speed(flow.bytesPerSecond)],
+                            [
+                              "Lecturas RPC activas / pico",
+                              `${flow.activeReads ?? 0} / ${flow.peakReads ?? 0}`,
+                            ],
+                            [
+                              "Paralelismo / bloques anticipados",
+                              flow.reader
+                                ? `${flow.reader.parallel} / ${flow.reader.buffers}`
+                                : undefined,
+                            ],
+                            ["Límite global de lecturas", flow.reader?.globalLimit],
                             [
                               "Primer byte (servidor)",
                               flow.firstByteMs === undefined

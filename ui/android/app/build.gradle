@@ -7,8 +7,8 @@ android {
         applicationId "lat.webrom.teldrive.client"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode = Integer.parseInt(System.getenv('MOBILE_VERSION_CODE') ?: '600')
-        versionName = System.getenv('MOBILE_VERSION_NAME') ?: '0.6.0'
+        versionCode = Integer.parseInt(System.getenv('MOBILE_VERSION_CODE') ?: '601')
+        versionName = System.getenv('MOBILE_VERSION_NAME') ?: '0.6.1'
         resValue('string', 'admob_app_id', System.getenv('MOBILE_ADMOB_ANDROID_APP_ID') ?: 'ca-app-pub-3940256099942544~3347511713')
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {

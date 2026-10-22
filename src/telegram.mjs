@@ -2,7 +2,8 @@ import { createRequire } from 'node:module';
 import { id, now, expires, expired, fail, CryptoBox, Locks, hash } from './core.mjs';
 import { SecureBlob } from './secureblob.mjs';
 import { hostname } from 'node:os';
-import { traceTransfer, recordTransferInput, recordTransferForwarded } from './playback-diagnostics.mjs';
+import { traceTransfer, recordTransferInput, recordTransferForwarded, configureDownload, traceDownloadRead } from './playback-diagnostics.mjs';
+import { DownloadGate, orderedDownload, cancellable } from './parallel-download.mjs';
 const require = createRequire(import.meta.url);
 const { TelegramClient, Api } = require('teleproto');
 const { StringSession } = require('teleproto/sessions');
@@ -21,7 +22,8 @@ export function telegramError(error) {
 export class Telegram {
   constructor(store, config) {
     this.store = store; this.config = config; this.box = new CryptoBox(config.key); this.secureBlob = new SecureBlob(config.key);
-    this.locks = new Locks(); this.rotation = new Map(); this.botClients = new Map(); this.clients = new Set(); this.busyBots = new Set(); this.botProfileChecks = new Map();
+    this.locks = new Locks(); this.rotation = new Map(); this.botClients = new Map(); this.clients = new Set(); this.busyBots = new Set(); this.botReservations = new Map(); this.botProfileChecks = new Map();
+    this.downloadGate = new DownloadGate(config.downloadMaxParallel ?? 16);
   }
   make(session = '') {
     const client = new TelegramClient(new StringSession(session), this.config.apiId, this.config.apiHash, { connectionRetries: 3, requestRetries: 3, floodSleepThreshold: 0, useWSS: true });
@@ -90,7 +92,8 @@ export class Telegram {
     const rotated = [...bots.slice(index), ...bots.slice(0, index)];
     // Reuse an idle authenticated connection before opening another Telegram/DC key.
     const warm = bot => this.botClients.has(bot.id) && !this.busyBots.has(bot.id);
-    rotated.sort((a,b) => Number(warm(b)) - Number(warm(a)));
+    const load = bot => this.botReservations.get(bot.id) || Number(this.busyBots.has(bot.id));
+    rotated.sort((a,b) => load(a) - load(b) || Number(warm(b)) - Number(warm(a)));
     return rotated.slice(0, this.config.botAttempts ?? 2);
   }
   async dropBot(botId) {
@@ -98,8 +101,9 @@ export class Telegram {
     clearTimeout(entry.timer); this.botClients.delete(botId); this.clients.delete(entry.client);
     await entry.client.disconnect().catch(()=>{});
   }
-  async withBot(bot, fn) {
+  async withBot(bot, fn, signal) {
     return this.locks.run(`bot:${bot.id}`, async () => {
+      if (signal?.aborted) return;
       if (this.closing) fail(503,'telegram_unavailable');
       // Each deployment authenticates a distinct key. Reusing Go's MTProto key
       // from another IP can invalidate it, even if its stored bytes are unchanged.
@@ -150,14 +154,17 @@ export class Telegram {
   async withTransfer(userId, operation, fn, signal, channelIds = []) {
     for (const bot of this.eligibleBots(userId, operation, channelIds)) {
       if (signal?.aborted) return;
-      try { return await traceTransfer({ kind: 'bot', id: bot.id, name: bot.name, username: bot.username }, () => this.withBot(bot, fn)); }
+      this.botReservations.set(bot.id, (this.botReservations.get(bot.id) || 0) + 1);
+      try { return await traceTransfer({ kind: 'bot', id: bot.id, name: bot.name, username: bot.username }, () => this.withBot(bot, fn, signal)); }
       catch (error) {
         if (signal?.aborted) return;
+        if (error.code === 'transfer_busy') throw error;
         // Channel-specific failures must not disable a shared bot in the Go app.
         const state = this.store.get('bot-state', this.botStateId(bot)) || { id: this.botStateId(bot), botId: bot.id, ownerId: bot.ownerId };
         state.retryAfter = expires(Math.max(this.config.botRetrySeconds ?? 60, Number(error.seconds) || 0) * 1000);
         state.lastError = 'telegram_bot_unavailable'; this.store.put('bot-state', state);
       }
+      finally { const pending = this.botReservations.get(bot.id) - 1; if (pending) this.botReservations.set(bot.id, pending); else this.botReservations.delete(bot.id); }
     }
     if (!signal?.aborted) return traceTransfer({ kind: 'account' }, () => this.withClient(userId, fn));
   }
@@ -315,20 +322,31 @@ export class Telegram {
     });
   }
   async read(userId, part, offset, length, write, signal) {
+    const parallel = this.config.downloadReadParallel ?? 1;
     let delivered = 0;
+    configureDownload({parallel,buffers:this.config.downloadReadBuffers ?? 8,globalLimit:this.config.downloadMaxParallel ?? 16});
     return this.withTransfer(userId, 'download', async client => {
       const { message } = await this.message(client, part);
-      const requestSize = 512 * 1024, start = offset + delivered, aligned = Math.floor(start / requestSize) * requestSize;
-      let skip = start - aligned, remaining = length - delivered;
-      for await (const bytes of client.iterDownload(message, { offset: aligned, limit: skip + remaining, requestSize, signal })) {
-        if (signal?.aborted) break;
-        recordTransferInput(bytes.length);
-        const discard = Math.min(skip, bytes.length); skip -= discard;
-        const chunk = bytes.subarray(discard, discard + remaining); remaining -= chunk.length;
-        if (chunk.length) { await write(chunk); delivered += chunk.length; recordTransferForwarded(chunk.length); }
-        if (!remaining) break;
-      }
-      if (remaining && !signal?.aborted) fail(503, 'telegram_part_truncated');
+      this.downloadGate.max = this.config.downloadMaxParallel ?? 16;
+      await orderedDownload({ offset: offset + delivered, length: length - delivered,
+        parallel, buffers: this.config.downloadReadBuffers ?? 8, signal,
+        fetch: (plan, attemptSignal) => this.downloadGate.run(() => traceDownloadRead(async () => {
+          const timeout = AbortSignal.timeout((this.config.downloadReadTimeoutSeconds ?? 15) * 1000);
+          const requestSignal = AbortSignal.any([attemptSignal, timeout]);
+          const iterator = client.iterDownload(message, { offset: plan.offset, limit: plan.skip + plan.length, requestSize: plan.requestSize, signal: requestSignal });
+          const chunks = []; let size = 0;
+          try {
+            while (size < plan.skip + plan.length) {
+              const next = await cancellable(iterator.next(), requestSignal);
+              if (next.done) fail(503, 'telegram_part_truncated');
+              recordTransferInput(next.value.length); size += next.value.length; chunks.push(next.value);
+            }
+            return Buffer.concat(chunks).subarray(plan.skip, plan.skip + plan.length);
+          } catch (error) { if (timeout.aborted && !attemptSignal.aborted) fail(503, 'telegram_read_timeout'); throw error; }
+          finally { void iterator.return?.().catch(() => {}); }
+        }), attemptSignal),
+        write: async bytes => { if (!signal?.aborted) { await write(bytes); delivered += bytes.length; recordTransferForwarded(bytes.length); } },
+      });
     }, signal, part.channelId ? [String(part.channelId)] : []);
   }
   async describe(userId, parts) {

@@ -7035,6 +7035,15 @@ components:
                     sourceIds:
                       type: array
                       items: { type: string }
+                    activeReads: { type: integer }
+                    peakReads: { type: integer }
+                    reader:
+                      type: object
+                      required: [parallel, buffers, globalLimit]
+                      properties:
+                        parallel: { type: integer }
+                        buffers: { type: integer }
+                        globalLimit: { type: integer }
                     conversion:
                       type: object
                       additionalProperties:
@@ -7058,6 +7067,8 @@ components:
                     forwardedBytes: { type: number }
                     bytesPerSecond: { type: number }
                     lastByteAt: { type: number }
+                    activeReads: { type: integer }
+                    peakReads: { type: integer }
     CastingRelay:
       type: object
       required:
