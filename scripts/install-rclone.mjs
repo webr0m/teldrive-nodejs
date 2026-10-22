@@ -12,7 +12,8 @@ const name = `rclone-${version}-${platform}-${arch}`;
 const directory = path.resolve('var', 'tools', 'rclone', name);
 const executable = path.join(directory, process.platform === 'win32' ? 'rclone.exe' : 'rclone');
 const response = await fetch(`https://api.github.com/repos/tgdrive/rclone/releases/tags/${version}`, {
-  headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'teldrive-nodejs-compatibility-check' }, signal: AbortSignal.timeout(30000),
+  headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'teldrive-nodejs-compatibility-check',
+    ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}) }, signal: AbortSignal.timeout(30000),
 });
 if (!response.ok) throw new Error(`Cannot read official rclone release metadata: HTTP ${response.status}`);
 const release = await response.json(), asset = release.assets.find(a => a.name === `${name}.zip`);
