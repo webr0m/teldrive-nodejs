@@ -86,6 +86,7 @@ support-url = ''
 [node.cache]
 backend = "memory" # "postgres" enables a second, disposable PostgreSQL layer.
 # postgres-url = "postgresql://cache_user:password@127.0.0.1/teldrive_cache"
+# postgres-password = 'Separate password; overrides the URL password without manual URL escaping.'
 schema = "teldrive_cache"
 ttl-seconds = 86400
 max-entries = 1000

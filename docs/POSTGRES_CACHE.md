@@ -20,7 +20,8 @@ Configuración del servidor, añadir al TOML privado:
 ```toml
 [node.cache]
 backend = "postgres"
-postgres-url = "postgresql://USUARIO:CLAVE@127.0.0.1/BASE_CACHE"
+postgres-url = "postgresql://USUARIO@127.0.0.1/BASE_CACHE"
+postgres-password = 'CLAVE'
 schema = "teldrive_cache"
 ttl-seconds = 86400
 max-entries = 1000
@@ -33,7 +34,9 @@ cleanup-seconds = 60
 ```
 
 Guardar y reiniciar la aplicación. El editor oculta la URL mediante
-`__TELDRIVE_KEEP_SECRET__`. También existen variables `CACHE_*` equivalentes en
+`__TELDRIVE_KEEP_SECRET__`, al igual que la contraseña separada. Esta última evita
+codificar manualmente caracteres especiales de una contraseña dentro de una URL.
+También existen variables `CACHE_*` equivalentes en
 `.env.example`. Para volver a memoria basta con `backend = "memory"` y reiniciar.
 No cambiar `DATABASE_URL` ni `DATABASE_TRANSPORT` para activar esta opción.
 

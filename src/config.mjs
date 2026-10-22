@@ -55,6 +55,7 @@ export function config(env = process.env, { skipManaged = false } = {}) {
     databaseSchema: env.DATABASE_SCHEMA || 'teldrive', metadataSchema: env.NODE_DATABASE_SCHEMA || 'teldrive_node',
     databasePoolSize: integer('DATABASE_POOL_SIZE', 2, 1, 100),
     cacheBackend: env.CACHE_BACKEND || 'memory', cachePostgresUrl: env.CACHE_POSTGRES_URL || '',
+    cachePostgresPassword: env.CACHE_POSTGRES_PASSWORD,
     cacheSchema: env.CACHE_POSTGRES_SCHEMA || 'teldrive_cache',
     cacheTtlSeconds: integer('CACHE_TTL_SECONDS', 86400, 60, 604800),
     cacheMaxEntries: integer('CACHE_MAX_ENTRIES', 1000, 1, 100000),

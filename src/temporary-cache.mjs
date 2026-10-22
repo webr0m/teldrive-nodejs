@@ -10,6 +10,12 @@ export function mediaCacheKey(file, config) {
     config.mediaAnalyzeSeconds, config.mediaProbeBytes]));
 }
 
+export function cacheConnectionString(config) {
+  const url = new URL(config.cachePostgresUrl);
+  if (config.cachePostgresPassword !== undefined) url.password = encodeURIComponent(config.cachePostgresPassword);
+  return url.href;
+}
+
 export class TemporaryCache {
   constructor(config, overrides = {}) {
     this.config = config; this.clock = overrides.clock || Date.now;
@@ -25,7 +31,7 @@ export class TemporaryCache {
     if (!/^[a-z_][a-z0-9_]{0,62}$/.test(schema)) throw new Error('Invalid cache schema');
     this.schema = `"${schema}"`; this.table = `${this.schema}.media_metadata_v1`;
     this.box = new CryptoBox(Buffer.from(hkdfSync('sha256', config.key, Buffer.alloc(0), 'teldrive-temporary-cache-v1', 32)));
-    this.pool = overrides.pool || new Pool({ connectionString: config.cachePostgresUrl,
+    this.pool = overrides.pool || new Pool({ connectionString: cacheConnectionString(config),
       max: this.parallel, connectionTimeoutMillis: config.cacheTimeoutMs ?? 250,
       statement_timeout: config.cacheTimeoutMs ?? 250, query_timeout: (config.cacheTimeoutMs ?? 250) + 50,
       idleTimeoutMillis: 30000, allowExitOnIdle: true, application_name: 'teldrive-cache',

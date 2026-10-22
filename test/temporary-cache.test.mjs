@@ -6,7 +6,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { PGlite } from '@electric-sql/pglite';
-import { TemporaryCache, mediaCacheKey } from '../src/temporary-cache.mjs';
+import { TemporaryCache, mediaCacheKey, cacheConnectionString } from '../src/temporary-cache.mjs';
+import { Client } from 'pg';
 import { Media } from '../src/media.mjs';
 import { config } from '../src/config.mjs';
 import { ServerConfiguration, KEEP_SECRET } from '../src/server-configuration.mjs';
@@ -106,6 +107,10 @@ test('owner TOML supports separate cache settings and redacts its connection sec
     assert.equal(config(env).cacheBackend, 'postgres'); assert.equal(config(env).cacheTtlSeconds, 120);
     assert.equal(config(env).databaseUrl, undefined, 'main DB configuration remains independent');
     assert.ok(manager.read().toml.includes(KEEP_SECRET)); assert.ok(!manager.read().toml.includes('cache-password'));
+    const secret = 'p@ss#word%40:/?';
+    manager.save({ revision: manager.read().revision, toml: `[node.cache]\npostgres-password='${secret}'` });
+    assert.equal(new Client({ connectionString: cacheConnectionString(config(env)) }).connectionParameters.password, secret);
+    assert.ok(!manager.read().toml.includes(secret));
     assert.throws(() => config({ ...env, SERVER_CONFIG_FILE: 'none', CACHE_BACKEND: 'postgres', CACHE_POSTGRES_URL: 'postgresql://remote.example/cache' }), /verify-full/);
     assert.throws(() => config({ ...env, SERVER_CONFIG_FILE: 'none', CACHE_POSTGRES_SCHEMA: 'public' }), /separate/);
   } finally { await rm(directory, { recursive: true, force: true }); }

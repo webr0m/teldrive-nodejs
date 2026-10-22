@@ -14,6 +14,7 @@ export const mappings = {
   'node.allow-iframe': 'ALLOW_IFRAME', 'node.demo-auth': 'DEMO_AUTH',
   'node.google.client-id': 'GOOGLE_CLIENT_ID', 'node.google.client-secret': 'GOOGLE_CLIENT_SECRET',
   'node.cache.backend': 'CACHE_BACKEND', 'node.cache.postgres-url': 'CACHE_POSTGRES_URL',
+  'node.cache.postgres-password': 'CACHE_POSTGRES_PASSWORD',
   'node.cache.schema': 'CACHE_POSTGRES_SCHEMA', 'node.cache.ttl-seconds': 'CACHE_TTL_SECONDS',
   'node.cache.max-entries': 'CACHE_MAX_ENTRIES', 'node.cache.memory-entries': 'CACHE_MEMORY_ENTRIES',
   'node.cache.max-value-bytes': 'CACHE_MAX_VALUE_BYTES', 'node.cache.pool-size': 'CACHE_POOL_SIZE',
