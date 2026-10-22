@@ -82,6 +82,35 @@ test('cache outage falls back to memory and retries without an unbounded SQL que
   cache.active = 0; await cache.close();
 });
 
+test('a disconnected cache recovers through maintenance and warm memory hits after the retry delay', async () => {
+  const db = new PGlite(), pool = new TestPool(db), c = settings();
+  let now = Date.now(), unavailable = false, attempts = 0;
+  const connect = pool.connect.bind(pool);
+  pool.connect = async () => { attempts++; if (unavailable) throw Object.assign(new Error('sensitive connection details'), { code: '08006' }); return connect(); };
+  const cache = new TemporaryCache(c, { pool, clock: () => now });
+  try {
+    await cache.initialize(); cache.set(key(1), { tracks: [] }); await flush(cache);
+    pool.emit('error', Object.assign(new Error('sensitive idle socket details'), { code: '57P01' }));
+    assert.equal(cache.status().connected, false);
+    assert.equal(cache.status().lastFailureCode, '57P01');
+    const before = attempts;
+    await cache.maintain(); assert.deepEqual(await cache.load(key(1)), { tracks: [] });
+    assert.equal(attempts, before, 'memory hits and maintenance respect the circuit breaker');
+    now += 30001; await cache.maintain();
+    assert.equal(cache.status().connected, true, 'maintenance recovers even with no new media requests');
+    unavailable = true; pool.emit('error', new Error('secret cache URL'));
+    now += 30001; await cache.maintain();
+    assert.equal(cache.status().connected, false);
+    unavailable = false; now += 30001;
+    assert.deepEqual(await cache.load(key(1)), { tracks: [] }, 'memory remains usable while reconnecting');
+    await cache.initializing;
+    assert.equal(cache.status().connected, true, 'warm memory access also schedules recovery');
+    assert.equal(JSON.stringify(cache.status()).includes('secret'), false);
+    await cache.close(); const closedAttempts = attempts; await cache.maintain();
+    assert.equal(attempts, closedAttempts, 'closed caches never reconnect');
+  } finally { await cache.close(); await db.close(); }
+});
+
 test('cached media never bypasses fresh ticket authorization and changes to file content invalidate its key', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'td-cache-media-'));
   const c = { dataDir: directory, publicUrl: 'http://127.0.0.1:3000', mediaEnabled: true, ffprobePath: process.execPath, ffmpegPath: process.execPath };

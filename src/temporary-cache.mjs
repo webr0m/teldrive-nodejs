@@ -36,17 +36,25 @@ export class TemporaryCache {
       statement_timeout: config.cacheTimeoutMs ?? 250, query_timeout: (config.cacheTimeoutMs ?? 250) + 50,
       idleTimeoutMillis: 30000, allowExitOnIdle: true, application_name: 'teldrive-cache',
       ...(new URL(config.cachePostgresUrl).searchParams.get('sslmode') === 'verify-full' ? { ssl: { rejectUnauthorized: true } } : {}) });
-    this.pool.on('error', () => this.failed());
+    this.pool.on('error', error => this.failed(error));
     void this.initialize();
-    this.timer = setInterval(() => { if (this.connected) void this.operation(client => this.prune(client)); },
+    this.timer = setInterval(() => { void this.maintain(); },
       (config.cacheCleanupSeconds ?? 60) * 1000).unref();
   }
-  failed() {
+  failed(error) {
     this.counts.failures++; this.connected = false;
+    this.lastFailureCode = typeof error?.code === 'string' && /^[A-Z0-9_]{2,64}$/.test(error.code) ? error.code
+      : /timeout|timed out/i.test(error?.message || '') ? 'CACHE_TIMEOUT' : 'CACHE_UNAVAILABLE';
     this.retryAt = this.clock() + (this.config.cacheRetrySeconds ?? 30) * 1000;
+  }
+  async maintain() {
+    if (this.closed || !this.pool) return;
+    if (!this.connected) return this.initialize();
+    return this.operation(client => this.prune(client));
   }
   initialize() {
     if (!this.pool || this.closed || this.clock() < (this.retryAt || 0)) return Promise.resolve(false);
+    if (this.connected) return Promise.resolve(true);
     if (this.initializing) return this.initializing;
     this.initializing = this.operation(async client => {
       await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.schema}`);
@@ -67,7 +75,7 @@ export class TemporaryCache {
     this.active++;
     let client;
     try { client = await this.pool.connect(); return await fn(client); }
-    catch { this.failed(); }
+    catch (error) { this.failed(error); }
     finally { client?.release(); this.active--; }
   }
   get(key) {
@@ -83,6 +91,8 @@ export class TemporaryCache {
     this.memory.set(key, { value: structuredClone(value), expiresAt });
   }
   async load(key) {
+    // Warm memory entries must not prevent recovery of the durable layer.
+    if (!this.connected) void this.initialize();
     const cached = this.get(key); if (cached !== undefined) return cached;
     if (!this.connected) { void this.initialize(); this.counts.misses++; return; }
     const entry = await this.operation(async client => {
@@ -128,7 +138,7 @@ export class TemporaryCache {
   status() {
     return { backend: this.config.cacheBackend || 'memory', connected: !!this.connected,
       memoryEntries: this.memory.size, ttlSeconds: this.ttl / 1000, maxEntries: this.rowLimit,
-      maxValueBytes: this.valueLimit, active: this.active, ...this.counts };
+      maxValueBytes: this.valueLimit, active: this.active, lastFailureCode: this.lastFailureCode, ...this.counts };
   }
   async close() {
     this.closed = true; clearInterval(this.timer); this.clear();

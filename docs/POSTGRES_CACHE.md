@@ -60,6 +60,9 @@ una cola ilimitada. Las escrituras ocurren en segundo plano. Si la base falla,
 se usa memoria y se suspende el intento durante 30 segundos. El arranque y la
 reproducción no dependen de que esa base esté disponible. El GET privado
 `/api/v1/admin/configuration` incluye `cache` con estado y contadores sin secretos.
+La reconexión se intenta también durante el mantenimiento y al reutilizar una
+entrada de memoria, respetando la pausa entre intentos. El campo
+`lastFailureCode` conserva un código de diagnóstico sin mensajes ni credenciales.
 
 ## Alcance
 
