@@ -6,6 +6,7 @@ import { rootCertificates } from 'node:tls';
 import { once } from 'node:events';
 import { fail, Semaphore } from './core.mjs';
 import { recordPlaybackOutput, conversionObserver } from './playback-diagnostics.mjs';
+import { TemporaryCache, mediaCacheKey } from './temporary-cache.mjs';
 const require = createRequire(import.meta.url);
 // Uploaded playlists must not make FFmpeg open local files or arbitrary URLs.
 const inputOptions = ['-protocol_whitelist','http,https,tcp,tls,crypto','-format_whitelist','matroska,webm,mov,mp4,m4a,3gp,3g2,mj2,avi,mp3,aac,flac,ogg,wav,asf,mpeg,mpegts,flv'];
@@ -37,23 +38,26 @@ export class Media {
     this.ffmpeg = config.ffmpegPath || require('ffmpeg-static'); this.ffprobe = config.ffprobePath || require('@derhuerst/ffprobe-static');
     this.caFile = config.mediaCaFile || path.join(config.dataDir,'media-root-ca.pem');
     if(!config.mediaCaFile) { mkdirSync(config.dataDir,{recursive:true,mode:0o700}); writeFileSync(this.caFile,rootCertificates.join('\n'),{mode:0o600}); }
-    this.transfers = new Semaphore(config.mediaConcurrency ?? 1); this.cache = new Map(); this.probes = new Map();
+    this.transfers = new Semaphore(config.mediaConcurrency ?? 1); this.cache = overrides.cache || new TemporaryCache(config); this.probes = new Map();
   }
   available() { return this.config.mediaEnabled === true && !!this.ffmpeg && existsSync(this.ffmpeg); }
   source(ticket, purpose = 'conversion-input') { const origin = this.config.mediaNode ? `http://${this.config.host === '::1' ? '[::1]' : '127.0.0.1'}:${this.config.port}` : this.config.publicUrl; const url = new URL('/api/v1/playback', origin); url.search = new URLSearchParams({ ticket, mode: 'original', purpose }).toString(); return url.href; }
   inputOptions() { return [...inputOptions,...(this.config.mediaNode ? ['-headers', `X-Teldrive-Media-Node: ${this.config.mediaNodeSecret}\r\n`] : this.config.publicUrl.startsWith('https:') ? ['-tls_verify','1','-ca_file',this.caFile] : [])]; }
   async tracks(ticket) {
-    const { file } = this.playback.resolve(ticket), key = `${file.id}:${file.generation}`;
+    const { file } = this.playback.resolve(ticket), key = mediaCacheKey(file, this.config);
     if (!this.config.mediaEnabled || !this.ffprobe || !existsSync(this.ffprobe)) return { available: false, tracks: [] };
-    const cached = this.cache.get(key); if (cached) return { available: true, tracks: cached.tracks, format: cached.format };
     if (this.probes.has(key)) return this.probes.get(key);
     this.transfers.max = this.config.mediaConcurrency ?? 1;
-    const pending = this.transfers.run(async () => {
+    // Deduplicate the cache lookup too, without holding a conversion slot for SQL.
+    const pending = (async () => {
+      const cached = await this.cache.load(key);
+      if (cached) return { available: true, tracks: cached.tracks, format: cached.format };
+      return this.transfers.run(async () => {
       const stdout = await this.collect(this.ffprobe, ['-v','error',...this.inputOptions(),'-rw_timeout','30000000','-probesize',String(this.config.mediaProbeBytes ?? 8388608),'-analyzeduration',String((this.config.mediaAnalyzeSeconds ?? 1)*1000000),'-show_streams','-show_format','-of','json',this.source(ticket,'probe')], this.config.mediaProbeTimeoutSeconds ?? 60);
       let tracks, copyVideo, format; try { const data = JSON.parse(stdout); tracks = mediaTracks(data); format=mediaFormat(data); copyVideo = (data.streams || []).filter(s => s.codec_name === 'h264' && ['yuv420p','yuvj420p'].includes(s.pix_fmt)).map(s => s.index); } catch { fail(503,'media_probe_failed'); }
-      if (this.cache.size >= 200) this.cache.delete(this.cache.keys().next().value);
       this.cache.set(key, { tracks, copyVideo, format }); return { available: true, tracks, format };
-    });
+      });
+    })();
     this.probes.set(key, pending);
     try { return await pending; } finally { this.probes.delete(key); }
   }
@@ -86,7 +90,7 @@ export class Media {
     if (subtitle !== undefined) fail(422,'bitmap_subtitle_conversion_unavailable','Esta pista necesita incrustación de subtítulos; elige una pista de texto o descarga el original.');
     const { file } = this.playback.consume(secret);
     const selectedVideo = video ?? tracks.find(t => t.kind === 'video')?.index;
-    const copyVideo = this.config.mediaCopyVideo !== 0 && this.cache.get(`${file.id}:${file.generation}`)?.copyVideo.includes(selectedVideo);
+    const copyVideo = this.config.mediaCopyVideo !== 0 && this.cache.get(mediaCacheKey(file, this.config))?.copyVideo.includes(selectedVideo);
     conversionObserver()({ video: mode === 'audio' ? 'none' : copyVideo ? 'copy' : 'h264', audio: mode === 'audio' ? 'mp3' : 'aac', maxWidth: this.config.mediaMaxWidth ?? 1920, threads: this.config.mediaThreads ?? 1 });
     this.transfers.max = this.config.mediaConcurrency ?? 1;
     return this.transfers.run(async () => {

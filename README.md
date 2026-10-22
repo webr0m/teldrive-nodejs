@@ -2,6 +2,8 @@
 
 La concurrencia, la caché temporal de solicitudes y los límites de lectura de Telegram se explican en [CONCURRENCY_AUDIT.md](docs/CONCURRENCY_AUDIT.md).
 
+La caché opcional de pistas y códecs en PostgreSQL local, separada de Supabase, se configura desde el TOML privado: [POSTGRES_CACHE.md](docs/POSTGRES_CACHE.md).
+
 La edición móvil Android/iOS, Google vinculado a Telegram, publicidad y manual se documentan en [MOBILE.md](docs/MOBILE.md). La preparación de las tiendas está en [STORE-LISTING.md](docs/STORE-LISTING.md).
 
 Port inicial del núcleo web de [webr0m/teldrive](https://github.com/webr0m/teldrive). Reutiliza la interfaz React de la rama `teldrive-v2-drive-es`, commit `e970c75502711abccdfe57c7fe2ae8961c5ed1d1`, con sus estilos, traducciones y visores. Añade **Configuración → Límites del servidor** dentro de esa misma interfaz, un servidor Node.js con MTProto y un modo opcional de pasarela.

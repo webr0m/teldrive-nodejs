@@ -82,3 +82,16 @@ client-secret = ''
 ads-config-url = ''
 privacy-url = ''
 support-url = ''
+# Optional cache, separate from [database] / node.database-*.
+[node.cache]
+backend = "memory" # "postgres" enables a second, disposable PostgreSQL layer.
+# postgres-url = "postgresql://cache_user:password@127.0.0.1/teldrive_cache"
+schema = "teldrive_cache"
+ttl-seconds = 86400
+max-entries = 1000
+memory-entries = 200
+max-value-bytes = 65536
+pool-size = 2
+timeout-ms = 250
+retry-seconds = 30
+cleanup-seconds = 60

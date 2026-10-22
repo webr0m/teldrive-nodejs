@@ -8,7 +8,7 @@ import { fail, hash } from './core.mjs';
 
 export const KEEP_SECRET = '__TELDRIVE_KEEP_SECRET__';
 const protectedKeys = new Set(['DATA_KEY', 'LEGACY_ENCRYPTION_KEY', 'LEGACY_KEYRING', 'ENCRYPTION_KEY_VERSION', 'OWNER_USER_ID', 'DATA_DIR', 'HOST', 'PORT', 'MODE', 'STORAGE_BACKEND', 'DEMO_AUTH', 'MEDIA_NODE', 'MEDIA_NODE_SECRET', 'MEDIA_NODE_ADMIN', 'MEDIA_NODE_PRIMARY_ORIGIN']);
-const secretKeys = new Set(['DATABASE_URL', 'SUPABASE_SECRET_KEY', 'TELEGRAM_API_HASH', 'GOOGLE_CLIENT_SECRET', 'MEDIA_NODE_SECRET']);
+const secretKeys = new Set(['DATABASE_URL', 'CACHE_POSTGRES_URL', 'SUPABASE_SECRET_KEY', 'TELEGRAM_API_HASH', 'GOOGLE_CLIENT_SECRET', 'MEDIA_NODE_SECRET']);
 const booleanKeys = new Set(['ALLOW_IFRAME', 'MEDIA_ENABLED', 'RCLONE_MOUNT_ENABLED']);
 const canonical = new Map();
 for (const [key, target] of Object.entries(mappings)) if (!canonical.has(target) || key.startsWith('node.')) canonical.set(target, key);

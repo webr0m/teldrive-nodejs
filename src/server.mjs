@@ -29,6 +29,7 @@ import { gateway } from './gateway.mjs';
 import { PostgresStore } from './postgres.mjs';
 import { SupabaseStore } from './supabase.mjs';
 import { AssetCache } from './assets.mjs';
+import { mediaCacheKey } from './temporary-cache.mjs';
 import { staticCacheControl } from './static-assets.mjs';
 import packageInfo from '../package.json' with { type: 'json' };
 
@@ -122,7 +123,7 @@ route('POST', '/api/v1/api-keys', c => {
 route('GET', '/api/v1/api-keys', c => result(page(c.store.list('keys', c.user.id).filter(k => !k.revokedAt).map(({ id, keyId, userId, ...k }) => ({ id: keyId, ...k })), c.query)));
 route('DELETE', '/api/v1/api-keys/:keyId', c => { const k = c.store.list('keys', c.user.id).find(k => k.keyId === c.params.keyId); if (!k) fail(404, 'key_not_found'); k.revokedAt = now(); c.store.put('keys', k); return empty(); });
 route('GET', '/api/v1/admin/settings', c => { owner(c); return result(c.settings.read()); });
-route('GET', '/api/v1/admin/configuration', c => { configurationOwner(c); return result(c.serverConfiguration.read()); });
+route('GET', '/api/v1/admin/configuration', c => { configurationOwner(c); return result({ ...c.serverConfiguration.read(), cache: c.media.cache.status() }); });
 for (const action of ['validate', 'save', 'restore', 'restart']) route('POST', `/api/v1/admin/configuration/${action}`, c => { configurationOwner(c); return result(c.serverConfiguration[action](c.body)); });
 route('GET', '/api/v1/jobs', c => { admin(c.user); c.jobs.wake(); return result(c.jobs.list(c.user.id,c.query)); });
 route('POST', '/api/v1/jobs', c => { admin(c.user); return result(c.jobs.create(c.user.id,c.body),201); });
@@ -321,7 +322,7 @@ route('GET', '/api/v1/playback/diagnostics', c => {
   if (!c.session) fail(403, 'session_required');
   const { file, grant } = c.playback.resolve(c.query.get('ticket'));
   if (file.ownerId !== c.user.id || grant.shareId || grant.actorId && grant.actorId !== c.user.id) fail(403, 'playback_diagnostics_owner_required');
-  const cached = c.media.cache.get(`${file.id}:${file.generation}`);
+  const cached = c.media.cache.get(mediaCacheKey(file, c.config));
   return result({ file: { id: file.id, name: file.name, size: file.size, mimeType: file.mimeType, encryption: !!file.encryption, parts: file.parts?.length || 0 },
     metadata: cached ? { tracks: cached.tracks, format: cached.format } : undefined,
     nodes: [c.diagnostics.snapshot(grant.id)], unavailableNodes: [] });
@@ -457,7 +458,7 @@ export function createApp(config, overrides = {}) {
   });
   server.requestTimeout = 3600000; server.headersTimeout = 60000; server.keepAliveTimeout = 5000;
   if (proxy) server.on('upgrade', proxy.upgrade);
-  return { server, context, async close() { clearInterval(cleanupTimer); await context?.rclone?.close(); await context?.jobs.close(); await new Promise(resolve => server.close(resolve)); await context?.telegram.close?.(); context?.mobile?.close(); context?.store.close(); } };
+  return { server, context, async close() { clearInterval(cleanupTimer); await context?.rclone?.close(); await context?.jobs.close(); await new Promise(resolve => server.close(resolve)); await context?.telegram.close?.(); await context?.media.cache.close(); context?.mobile?.close(); context?.store.close(); } };
 }
 export async function start() {
   const config = readConfig(), app = createApp(config);

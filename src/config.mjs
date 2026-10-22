@@ -54,6 +54,16 @@ export function config(env = process.env, { skipManaged = false } = {}) {
     databaseTransport: env.DATABASE_TRANSPORT || 'postgres', supabaseUrl: env.SUPABASE_URL, supabaseKey: env.SUPABASE_SECRET_KEY,
     databaseSchema: env.DATABASE_SCHEMA || 'teldrive', metadataSchema: env.NODE_DATABASE_SCHEMA || 'teldrive_node',
     databasePoolSize: integer('DATABASE_POOL_SIZE', 2, 1, 100),
+    cacheBackend: env.CACHE_BACKEND || 'memory', cachePostgresUrl: env.CACHE_POSTGRES_URL || '',
+    cacheSchema: env.CACHE_POSTGRES_SCHEMA || 'teldrive_cache',
+    cacheTtlSeconds: integer('CACHE_TTL_SECONDS', 86400, 60, 604800),
+    cacheMaxEntries: integer('CACHE_MAX_ENTRIES', 1000, 1, 100000),
+    cacheMemoryEntries: integer('CACHE_MEMORY_ENTRIES', 200, 1, 10000),
+    cacheMaxValueBytes: integer('CACHE_MAX_VALUE_BYTES', 65536, 1024, 1048576),
+    cachePoolSize: integer('CACHE_POOL_SIZE', 2, 1, 8),
+    cacheTimeoutMs: integer('CACHE_TIMEOUT_MS', 250, 50, 5000),
+    cacheRetrySeconds: integer('CACHE_RETRY_SECONDS', 30, 1, 300),
+    cacheCleanupSeconds: integer('CACHE_CLEANUP_SECONDS', 60, 5, 3600),
     legacyEncryptionKey: env.LEGACY_ENCRYPTION_KEY,
     legacyKeyring: env.LEGACY_KEYRING ? JSON.parse(env.LEGACY_KEYRING) : {},
     encryptionKeyVersion: Number(env.ENCRYPTION_KEY_VERSION || 1),
@@ -110,6 +120,13 @@ export function config(env = process.env, { skipManaged = false } = {}) {
   if (!['native', 'legacy', 'v2', 'auto'].includes(c.databaseLayout)) throw new Error('Invalid DATABASE_LAYOUT');
   if (c.databaseLayout !== 'native' && ((!c.databaseUrl && !c.supabaseUrl) || c.backend !== 'telegram')) throw new Error('Existing database requires a database connection and Telegram storage');
   if (!['postgres', 'supabase'].includes(c.databaseTransport)) throw new Error('Invalid DATABASE_TRANSPORT');
+  if (!['memory', 'postgres'].includes(c.cacheBackend)) throw new Error('Invalid CACHE_BACKEND');
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(c.cacheSchema) || [c.databaseSchema, c.metadataSchema, 'public'].includes(c.cacheSchema)) throw new Error('Use a separate private cache schema');
+  if (c.cacheBackend === 'postgres') {
+    const url = new URL(c.cachePostgresUrl);
+    if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.hostname || url.hash) throw new Error('Invalid CACHE_POSTGRES_URL');
+    if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) && url.searchParams.get('sslmode') !== 'verify-full') throw new Error('Remote PostgreSQL cache requires sslmode=verify-full');
+  }
   if (c.databaseUrl && !c.databaseUrl.startsWith('pglite:')) {
     const url = new URL(c.databaseUrl);
     if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.hostname || url.hash) throw new Error('Invalid DATABASE_URL');

@@ -14,6 +14,14 @@ type Configuration = {
   restartRequired: boolean;
   restartAvailable: boolean;
   backups: { id: string; createdAt: string }[];
+  cache?: {
+    backend: "memory" | "postgres";
+    connected: boolean;
+    memoryEntries: number;
+    ttlSeconds: number;
+    postgresHits: number;
+    failures: number;
+  };
 };
 type Validation = {
   changed: string[];
@@ -93,6 +101,37 @@ function ServerConfiguration() {
         title="Configuración del servidor"
         description="Importa o edita los parámetros del TOML desde tu sesión de propietario. Los secretos existentes se ocultan y se conservan al guardar."
       />
+      {current.cache && (
+        <SettingsSection
+          title="Caché temporal de medios"
+          description="Conserva análisis de pistas y códecs. Se configura en [node.cache] del TOML; la base principal mantiene archivos y permisos. Estado al cargar esta página."
+        >
+          <dl className="grid grid-cols-2 gap-4 p-5 text-sm">
+            <div>
+              <dt>Almacenamiento</dt>
+              <dd>
+                {current.cache.backend === "postgres"
+                  ? current.cache.connected
+                    ? "PostgreSQL conectado + memoria"
+                    : "PostgreSQL sin conexión · respaldo en memoria"
+                  : "Memoria"}
+              </dd>
+            </div>
+            <div>
+              <dt>Caducidad</dt>
+              <dd>{current.cache.ttlSeconds} segundos</dd>
+            </div>
+            <div>
+              <dt>Entradas en memoria</dt>
+              <dd>{current.cache.memoryEntries}</dd>
+            </div>
+            <div>
+              <dt>Aciertos PostgreSQL</dt>
+              <dd>{current.cache.postgresHits}</dd>
+            </div>
+          </dl>
+        </SettingsSection>
+      )}
       {current.restartRequired && (
         <div role="status" className="rounded-xl border border-warning p-4 text-sm">
           Hay cambios guardados pendientes de reinicio. La aplicación sigue usando la configuración

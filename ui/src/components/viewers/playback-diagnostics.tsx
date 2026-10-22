@@ -718,9 +718,7 @@ export function PlaybackDiagnostics({
   ) : null;
   return (
     <>
-      {toggle}
-      {fullscreen &&
-        createPortal(<div className="absolute left-3 top-3 z-[99]">{toggle}</div>, fullscreen)}
+      {!fullscreen && toggle}
       {panel && (fullscreen || root.current) && createPortal(panel, fullscreen || root.current!)}
     </>
   );
